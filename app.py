@@ -6,7 +6,7 @@ from groq import Groq
 st.set_page_config(page_title="AI Business Copilot", layout="wide")
 
 # API Key
-client = Groq(api_key="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")
+client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
 # Title
 st.title("🚀 AI Business Copilot")
