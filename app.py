@@ -150,4 +150,4 @@ Total Profit: {total_profit}
                 st.markdown(f"**🤖 AI:** {msg}")
 
 else:
-    st.info("👈 Upload a CSV file from the sidebar to get started")SV file from the sidebar to get started")
+    st.info("👈 Upload a CSV file from the sidebar to get started")
