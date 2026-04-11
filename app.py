@@ -78,6 +78,7 @@ st.success(f"Welcome {user['name']} 👋")
 if st.sidebar.button("Logout"):
     st.session_state.page = "auth"
     st.session_state.user = None
+    st.session_state.history = []
     st.rerun()
 
 # Sidebar
@@ -90,9 +91,9 @@ if uploaded_file or use_sample:
 
     if use_sample:
         df = pd.DataFrame({
-            "date": pd.date_range("2026-01-01", periods=10),
-            "revenue": [1000,1200,900,1500,1100,1300,1400,1600,1700,1800],
-            "cost": [600,700,500,800,650,750,900,950,1000,1100]
+            "date": pd.date_range("2026-01-01", periods=20),
+            "revenue": [1000 + i*50 for i in range(20)],
+            "cost": [600 + i*30 for i in range(20)]
         })
     else:
         df = pd.read_csv(uploaded_file)
@@ -104,7 +105,6 @@ if uploaded_file or use_sample:
         st.error("❌ CSV must contain: date, revenue, cost")
         st.stop()
 
-    # Convert types
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df["revenue"] = pd.to_numeric(df["revenue"], errors="coerce")
     df["cost"] = pd.to_numeric(df["cost"], errors="coerce")
@@ -160,7 +160,22 @@ if uploaded_file or use_sample:
     # ---------------- AI ----------------
     with tab3:
 
-        user_input = st.text_input("Ask AI")
+        st.subheader("🤖 AI Assistant")
+
+        # 🔥 Chat history FIRST
+        chat_container = st.container()
+
+        with chat_container:
+            for role, msg in st.session_state.history:
+                if role == "You":
+                    st.markdown(f"**🧑 You:** {msg}")
+                else:
+                    st.markdown(f"**🤖 AI:** {msg}")
+
+        st.markdown("---")
+
+        # 🔥 FIXED INPUT
+        user_input = st.text_input("Type your question...", key="chat_input")
 
         if user_input:
             summary = df.describe().to_string()
@@ -176,7 +191,7 @@ if uploaded_file or use_sample:
             try:
                 response = client.chat.completions.create(
                     model="llama-3.1-8b-instant",
-                    messages=[{"role":"user","content":prompt}]
+                    messages=[{"role": "user", "content": prompt}]
                 )
                 reply = response.choices[0].message.content
             except:
@@ -185,8 +200,8 @@ if uploaded_file or use_sample:
             st.session_state.history.append(("You", user_input))
             st.session_state.history.append(("AI", reply))
 
-        for role, msg in st.session_state.history:
-            st.write(f"**{role}:** {msg}")
+            st.session_state.chat_input = ""
+            st.rerun()
 
 else:
     st.info("Upload a CSV file or use sample data")
