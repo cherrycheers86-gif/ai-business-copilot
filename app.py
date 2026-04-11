@@ -3,7 +3,7 @@ import pandas as pd
 from groq import Groq
 import io
 
-# CONFIG
+# ---------------- CONFIG ----------------
 st.set_page_config(page_title="AI Business Copilot", layout="wide")
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
@@ -47,14 +47,17 @@ if not st.session_state.form_submitted:
         st.session_state.form_submitted = True
         st.rerun()
 
+    st.warning("Please fill your details to continue")
     st.stop()
 
+# ---------------- CUSTOMER ----------------
 customer = st.session_state.customer
+industry = customer["industry"]
+
 st.success(f"Welcome {customer['name']} 🚀")
 
 # ---------------- SIDEBAR ----------------
 st.sidebar.header("⚙️ Controls")
-
 uploaded_file = st.sidebar.file_uploader("Upload CSV", type=["csv"])
 use_sample = st.sidebar.button("Use Sample Data")
 
@@ -78,9 +81,16 @@ if uploaded_file or use_sample:
     expense_col = st.selectbox("Select Expense Column", cols)
     date_col = st.selectbox("Select Date Column", cols)
 
+    # Map columns
     df["Sales"] = df[sales_col]
     df["Expenses"] = df[expense_col]
     df["Date"] = pd.to_datetime(df[date_col], errors="coerce")
+
+    # ---------------- FIX NUMERIC ISSUE ----------------
+    df["Sales"] = pd.to_numeric(df["Sales"], errors="coerce")
+    df["Expenses"] = pd.to_numeric(df["Expenses"], errors="coerce")
+
+    df = df.dropna(subset=["Sales", "Expenses", "Date"])
 
     df["Profit"] = df["Sales"] - df["Expenses"]
 
@@ -103,23 +113,39 @@ if uploaded_file or use_sample:
         total_profit = df["Profit"].sum()
 
         c1, c2, c3 = st.columns(3)
-        c1.metric("Sales", f"${total_sales}")
-        c2.metric("Expenses", f"${total_expenses}")
-        c3.metric("Profit", f"${total_profit}")
+        c1.metric("Sales", f"${total_sales:.2f}")
+        c2.metric("Expenses", f"${total_expenses:.2f}")
+        c3.metric("Profit", f"${total_profit:.2f}")
 
-        # ---------------- INDUSTRY KPI ----------------
+        # ---------------- DYNAMIC KPI ENGINE ----------------
         st.subheader("📊 Industry KPIs")
 
-        if customer["industry"] == "Restaurant":
-            food_cost_pct = (total_expenses / total_sales) * 100 if total_sales else 0
-            st.metric("Food Cost %", f"{food_cost_pct:.2f}%")
+        if industry == "Restaurant":
+            food_cost = (total_expenses / total_sales) * 100 if total_sales else 0
+            st.metric("🍔 Food Cost %", f"{food_cost:.2f}%")
 
-            if food_cost_pct > 30:
-                st.error("⚠️ Food cost too high (benchmark: 30%)")
+            if food_cost > 30:
+                st.error("Food cost too high (benchmark: 30%)")
             else:
                 st.success("Food cost healthy")
 
-        # ---------------- TABLE ----------------
+        elif industry == "Retail":
+            margin = (total_profit / total_sales) * 100 if total_sales else 0
+            st.metric("🛒 Profit Margin", f"{margin:.2f}%")
+
+            if margin < 20:
+                st.warning("Low margin — improve pricing")
+
+        elif industry == "Gas Station":
+            margin = (total_profit / total_sales) * 100 if total_sales else 0
+            st.metric("⛽ Margin %", f"{margin:.2f}%")
+
+            if margin < 10:
+                st.warning("Very low margin — rely on store sales")
+
+        else:
+            st.metric("📊 Profit", f"${total_profit:.2f}")
+
         st.dataframe(df)
 
     # ---------------- TRENDS ----------------
@@ -136,7 +162,7 @@ if uploaded_file or use_sample:
 
             prompt = f"""
             Business: {customer['business']}
-            Industry: {customer['industry']}
+            Industry: {industry}
 
             Data:
             {summary}
@@ -165,6 +191,7 @@ if uploaded_file or use_sample:
         report = f"""
 Customer: {customer['name']}
 Business: {customer['business']}
+Industry: {industry}
 
 Sales: {total_sales}
 Expenses: {total_expenses}
