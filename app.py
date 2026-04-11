@@ -183,7 +183,6 @@ if uploaded_file or use_sample:
 
             # -------- CHARTS --------
             if "chart" in q or "graph" in q:
-
                 if "january" in q:
                     data = df[df["date"].dt.month == 1]
                 elif "february" in q or "feb" in q:
@@ -222,17 +221,21 @@ if uploaded_file or use_sample:
             elif "average profit" in q:
                 result = f"{df['profit'].mean():.2f}"
 
-            # -------- BLOCK AI CALCULATIONS --------
-            if any(x in q for x in ["profit","sales","max","min","average","top"]):
-                if result is None:
-                    result = "Calculation not supported yet"
+            # -------- SMART BLOCK (FIXED) --------
+            calc_keywords = ["max","maximum","min","minimum","average","total","top"]
 
-            # -------- AI INSIGHTS ONLY --------
+            if any(x in q for x in calc_keywords) and result is None:
+                result = "Calculation not supported yet"
+
+            # -------- AI INSIGHTS --------
             if result is None:
                 prompt = f"""
                 You are a business analyst.
 
-                Give insights only. No numbers calculation.
+                RULES:
+                - No calculations
+                - No code
+                - Only insights
 
                 Data:
                 {df.head(30).to_string()}
