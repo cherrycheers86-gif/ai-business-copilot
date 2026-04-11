@@ -81,9 +81,9 @@ if uploaded_file or use_sample:
 
     if use_sample:
         df = pd.DataFrame({
-            "date": pd.date_range("2026-01-01", periods=30),
-            "revenue": [1000 + i*50 for i in range(30)],
-            "cost": [600 + i*30 for i in range(30)]
+            "date": pd.date_range("2026-01-01", periods=60),
+            "revenue": [1000 + i*50 for i in range(60)],
+            "cost": [600 + i*30 for i in range(60)]
         })
     else:
         df = pd.read_csv(uploaded_file)
@@ -165,40 +165,77 @@ if uploaded_file or use_sample:
                 q = user_input.lower()
                 result = None
 
-                # ---------------- INTENT DETECTION ----------------
-                if any(x in q for x in ["max", "maximum", "highest"]):
+                # ---------------- CHART HANDLING (FIRST PRIORITY) ----------------
+                if any(x in q for x in ["chart", "graph", "plot"]):
+                    if "january" in q:
+                        jan = df[df["date"].dt.month == 1]
+                        st.line_chart(jan.set_index("date")[["revenue", "cost", "profit"]])
+                        result = "Here is the January chart."
+
+                    elif "february" in q or "feb" in q:
+                        feb = df[df["date"].dt.month == 2]
+                        if len(feb) > 0:
+                            st.line_chart(feb.set_index("date")[["revenue", "cost", "profit"]])
+                            result = "Here is the February chart."
+                        else:
+                            result = "No data available for February."
+
+                    elif "sales" in q and "expenses" in q:
+                        st.line_chart(df.set_index("date")[["revenue", "cost"]])
+                        result = "Here is the sales vs expenses chart."
+
+                    else:
+                        st.line_chart(df.set_index("date")[["revenue", "cost", "profit"]])
+                        result = "Here is the chart."
+
+                # ---------------- CALCULATIONS ----------------
+                elif "top 3" in q and "profit" in q:
+                    top3 = df.nlargest(3, "profit")[["date", "profit"]]
+                    result = f"Top 3 profit days:\n{top3.to_string(index=False)}"
+
+                elif "compare" in q:
+                    best = df.loc[df["profit"].idxmax()]
+                    worst = df.loc[df["profit"].idxmin()]
+                    result = f"Best day: {best['date'].date()} (${best['profit']:.2f}), Worst day: {worst['date'].date()} (${worst['profit']:.2f})"
+
+                elif "maximum profit" in q:
                     row = df.loc[df["profit"].idxmax()]
                     result = f"Maximum profit is {row['profit']:.2f} on {row['date'].date()}"
 
-                elif any(x in q for x in ["min", "minimum", "lowest"]):
+                elif "lowest profit" in q:
                     row = df.loc[df["profit"].idxmin()]
                     result = f"Lowest profit is {row['profit']:.2f} on {row['date'].date()}"
 
                 elif "total sales" in q:
                     result = f"Total sales is {df['revenue'].sum():.2f}"
 
-                elif "average" in q:
+                elif "average profit" in q:
                     result = f"Average profit is {df['profit'].mean():.2f}"
 
-                # ---------------- CHART HANDLING ----------------
-                elif any(x in q for x in ["chart", "plot", "graph"]):
-                    st.line_chart(df.set_index("date")[["revenue", "cost", "profit"]])
-                    result = "Here is your chart."
-
-                # ---------------- AI FALLBACK ----------------
+                # ---------------- CONTEXT-AWARE AI ----------------
                 if result:
-                    prompt = f"Explain this clearly and briefly: {result}"
+                    prompt = f"Explain briefly: {result}"
                 else:
+                    # Month detection
+                    if "feb" in q:
+                        context_df = df[df["date"].dt.month == 2]
+                    elif "jan" in q:
+                        context_df = df[df["date"].dt.month == 1]
+                    else:
+                        context_df = df
+
+                    context_df = context_df.head(50)
+
                     prompt = f"""
                     You are a business analyst.
 
                     RULES:
-                    - DO NOT write code
-                    - DO NOT explain steps
-                    - Give insights only
+                    - NO code
+                    - NO steps
+                    - ONLY direct insights
 
                     DATA:
-                    {df.head(30).to_string()}
+                    {context_df.to_string()}
 
                     QUESTION:
                     {user_input}
