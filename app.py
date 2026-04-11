@@ -86,21 +86,35 @@ if uploaded_file or use_sample:
     df["Expenses"] = df[expense_col]
     df["Date"] = pd.to_datetime(df[date_col], errors="coerce")
 
-    # ---------------- FIX NUMERIC ISSUE ----------------
+    # ---------------- SAFE NUMERIC ----------------
     df["Sales"] = pd.to_numeric(df["Sales"], errors="coerce")
     df["Expenses"] = pd.to_numeric(df["Expenses"], errors="coerce")
 
+    # Drop bad rows
     df = df.dropna(subset=["Sales", "Expenses", "Date"])
 
+    if len(df) == 0:
+        st.error("❌ No valid data after cleaning. Please check your file.")
+        st.stop()
+
+    # Profit
     df["Profit"] = df["Sales"] - df["Expenses"]
 
-    # ---------------- FILTER ----------------
+    # ---------------- SAFE DATE FILTER ----------------
     st.sidebar.subheader("📅 Filter")
-    start = st.sidebar.date_input("Start", df["Date"].min().date())
-    end = st.sidebar.date_input("End", df["Date"].max().date())
 
-    df = df[(df["Date"].dt.date >= start) & 
+    min_date = df["Date"].min()
+    max_date = df["Date"].max()
+
+    start = st.sidebar.date_input("Start", min_date.date())
+    end = st.sidebar.date_input("End", max_date.date())
+
+    df = df[(df["Date"].dt.date >= start) &
             (df["Date"].dt.date <= end)]
+
+    if len(df) == 0:
+        st.warning("⚠️ No data in selected date range")
+        st.stop()
 
     # ---------------- TABS ----------------
     tab1, tab2, tab3, tab4 = st.tabs(["📊 Dashboard", "📈 Trends", "🤖 AI", "📥 Report"])
@@ -117,7 +131,7 @@ if uploaded_file or use_sample:
         c2.metric("Expenses", f"${total_expenses:.2f}")
         c3.metric("Profit", f"${total_profit:.2f}")
 
-        # ---------------- DYNAMIC KPI ENGINE ----------------
+        # ---------------- INDUSTRY KPIs ----------------
         st.subheader("📊 Industry KPIs")
 
         if industry == "Restaurant":
@@ -172,12 +186,16 @@ if uploaded_file or use_sample:
             Give insights and suggestions.
             """
 
-            response = client.chat.completions.create(
-                model="llama-3.1-8b-instant",
-                messages=[{"role": "user", "content": prompt}]
-            )
+            try:
+                response = client.chat.completions.create(
+                    model="llama-3.1-8b-instant",
+                    messages=[{"role": "user", "content": prompt}]
+                )
 
-            reply = response.choices[0].message.content
+                reply = response.choices[0].message.content
+
+            except Exception as e:
+                reply = "⚠️ AI temporarily unavailable. Please try again."
 
             st.session_state.history.append(("You", user_input))
             st.session_state.history.append(("AI", reply))
