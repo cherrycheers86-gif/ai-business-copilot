@@ -6,25 +6,25 @@ import io
 # Page config
 st.set_page_config(page_title="AI Business Copilot", layout="wide")
 
+# API Key
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
+# Title
 st.title("🚀 AI Business Copilot")
 st.markdown("### Analyze your business and get AI insights instantly")
 
 # Sidebar
 st.sidebar.header("⚙️ Controls")
-
 uploaded_file = st.sidebar.file_uploader("Upload CSV", type=["csv"])
-
 use_sample = st.sidebar.button("Use Sample Data")
 
 # Chat memory
 if "history" not in st.session_state:
     st.session_state.history = []
 
-# Load data
+# Load Data
 if uploaded_file or use_sample:
-    
+
     if use_sample:
         df = pd.DataFrame({
             "Date": pd.date_range(start="2026-01-01", periods=7),
@@ -34,23 +34,34 @@ if uploaded_file or use_sample:
     else:
         df = pd.read_csv(uploaded_file)
 
-    # Convert date if exists
+    # Convert Date
     if "Date" in df.columns:
-        df["Date"] = pd.to_datetime(df["Date"])
+        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
 
+    # Add Profit
     df["Profit"] = df["Sales"] - df["Expenses"]
 
     # FILTER
-    st.sidebar.subheader("📅 Filter Data")
+    if "Date" in df.columns:
+        st.sidebar.subheader("📅 Filter Data")
+
+        start_date = st.sidebar.date_input("Start Date", df["Date"].min().date())
+        end_date = st.sidebar.date_input("End Date", df["Date"].max().date())
+
+        mask = (df["Date"].dt.date >= start_date) & (df["Date"].dt.date <= end_date)
+        df = df.loc[mask]
+
+    # VIEW TYPE
+    st.sidebar.subheader("📊 View Type")
+    view_type = st.sidebar.selectbox("Select View", ["Daily", "Monthly"])
 
     if "Date" in df.columns:
-        start_date = st.sidebar.date_input("Start Date", df["Date"].min())
-        end_date = st.sidebar.date_input("End Date", df["Date"].max())
+        df["Month"] = df["Date"].dt.to_period("M").astype(str)
 
-        df = df[(df["Date"] >= pd.to_datetime(start_date)) & 
-                (df["Date"] <= pd.to_datetime(end_date))]
+        if view_type == "Monthly":
+            df = df.groupby("Month").sum(numeric_only=True).reset_index()
 
-    # TABS (clean UI)
+    # Tabs
     tab1, tab2, tab3, tab4 = st.tabs(["📊 Dashboard", "📈 Trends", "🤖 AI Chat", "📥 Report"])
 
     # ---------------- DASHBOARD ----------------
@@ -73,6 +84,11 @@ if uploaded_file or use_sample:
         with col1:
             st.dataframe(df)
 
+            # Best Day
+            if "Date" in df.columns and len(df) > 0:
+                best_day = df.loc[df["Sales"].idxmax()]
+                st.success(f"🏆 Best Sales Day: {best_day['Date']} (${best_day['Sales']})")
+
         with col2:
             st.subheader("🚨 Issues")
 
@@ -84,7 +100,7 @@ if uploaded_file or use_sample:
             if total_expenses > total_sales * 0.7:
                 st.warning("High expenses")
 
-            if df["Sales"].iloc[-1] < df["Sales"].mean():
+            if len(df) > 0 and df["Sales"].iloc[-1] < df["Sales"].mean():
                 st.warning("Sales dropping")
 
             st.subheader("💡 Recommendations")
@@ -92,14 +108,40 @@ if uploaded_file or use_sample:
             if total_expenses > total_sales * 0.7:
                 st.write("- Reduce supplier cost")
 
-            if df["Sales"].iloc[-1] < df["Sales"].mean():
+            if len(df) > 0 and df["Sales"].iloc[-1] < df["Sales"].mean():
                 st.write("- Increase marketing")
+
+            if total_profit > 0:
+                st.write("- Reinvest profits")
+
+        # Profit Margin
+        st.subheader("📊 Profit Margin")
+
+        if total_sales > 0:
+            profit_margin = (total_profit / total_sales) * 100
+            st.metric("Profit Margin", f"{profit_margin:.2f}%")
+
+        # Smart Alert
+        st.subheader("⚡ Smart Alert")
+
+        if total_profit < 0:
+            st.error("🔥 You're losing money!")
+        elif total_profit < total_sales * 0.1:
+            st.warning("⚠️ Low profit margin")
+        else:
+            st.success("🚀 Healthy business")
 
     # ---------------- TRENDS ----------------
     with tab2:
         st.subheader("📈 Trends")
-
         st.line_chart(df[["Sales", "Expenses", "Profit"]])
+
+        # Bar Chart
+        chart_df = pd.DataFrame({
+            "Category": ["Sales", "Expenses"],
+            "Amount": [total_sales, total_expenses]
+        })
+        st.bar_chart(chart_df.set_index("Category"))
 
     # ---------------- AI CHAT ----------------
     with tab3:
@@ -113,12 +155,15 @@ if uploaded_file or use_sample:
             prompt = f"""
             You are a business expert.
 
+            Analyze the data and provide:
+            - Key insights
+            - Problems
+            - Suggestions
+
             Data:
             {summary}
 
             Question: {user_input}
-
-            Give insights + suggestions.
             """
 
             response = client.chat.completions.create(
