@@ -16,7 +16,7 @@ if "user" not in st.session_state:
 if "history" not in st.session_state:
     st.session_state.history = []
 
-# ---------------- AUTH PAGE ----------------
+# ---------------- AUTH ----------------
 if st.session_state.page == "auth":
 
     st.title("🔐 Login / Signup")
@@ -32,21 +32,16 @@ if st.session_state.page == "auth":
         if st.button("Create Account"):
             st.session_state.user = {
                 "name": name,
-                "email": email,
-                "industry": None,
-                "size": None
+                "email": email
             }
             st.session_state.page = "onboarding"
             st.rerun()
 
     else:
         if st.button("Login"):
-            # Demo login (replace with DB later)
             st.session_state.user = {
-                "name": "Demo User",
-                "email": email,
-                "industry": "Restaurant",
-                "size": "Small"
+                "name": "User",
+                "email": email
             }
             st.session_state.page = "app"
             st.rerun()
@@ -75,19 +70,18 @@ if st.session_state.page == "onboarding":
 
 # ---------------- MAIN APP ----------------
 user = st.session_state.user
-industry = user["industry"]
 
 st.title("🚀 AI Business Copilot")
 st.success(f"Welcome {user['name']} 👋")
 
-# Logout button
+# Logout
 if st.sidebar.button("Logout"):
     st.session_state.page = "auth"
     st.session_state.user = None
     st.rerun()
 
 # Sidebar
-st.sidebar.header("⚙️ Controls")
+st.sidebar.header("📁 Upload Data")
 uploaded_file = st.sidebar.file_uploader("Upload CSV", type=["csv"])
 use_sample = st.sidebar.button("Use Sample Data")
 
@@ -103,84 +97,65 @@ if uploaded_file or use_sample:
     else:
         df = pd.read_csv(uploaded_file)
 
-    st.subheader("🔧 Map Your Data")
+    # ---------------- VALIDATION ----------------
+    required_cols = ["date", "revenue", "cost"]
 
-    cols = df.columns
-    sales_col = st.selectbox("Sales Column", cols)
-    expense_col = st.selectbox("Expenses Column", cols)
-    date_col = st.selectbox("Date Column", cols)
-
-    # Map
-    df["Sales"] = df[sales_col]
-    df["Expenses"] = df[expense_col]
-    df["Date"] = df[date_col]
-
-    # ---------------- CLEANING ----------------
-    df["Sales"] = df["Sales"].astype(str).str.replace("$","").str.replace(",","")
-    df["Expenses"] = df["Expenses"].astype(str).str.replace("$","").str.replace(",","")
-
-    df["Sales"] = pd.to_numeric(df["Sales"], errors="coerce")
-    df["Expenses"] = pd.to_numeric(df["Expenses"], errors="coerce")
-    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-
-    df = df.dropna(subset=["Sales","Expenses","Date"])
-
-    if len(df) == 0:
-        st.error("❌ No valid data after cleaning")
+    if not all(col in df.columns for col in required_cols):
+        st.error("❌ CSV must contain: date, revenue, cost")
         st.stop()
 
-    df["Profit"] = df["Sales"] - df["Expenses"]
+    # Convert types
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df["revenue"] = pd.to_numeric(df["revenue"], errors="coerce")
+    df["cost"] = pd.to_numeric(df["cost"], errors="coerce")
+
+    df = df.dropna()
+
+    if len(df) == 0:
+        st.error("❌ No valid data")
+        st.stop()
+
+    df["profit"] = df["revenue"] - df["cost"]
 
     # ---------------- FILTER ----------------
     st.sidebar.subheader("📅 Filter")
 
-    min_date = df["Date"].min()
-    max_date = df["Date"].max()
+    min_date = df["date"].min()
+    max_date = df["date"].max()
 
     start = st.sidebar.date_input("Start", min_date.date())
     end = st.sidebar.date_input("End", max_date.date())
 
-    df = df[(df["Date"].dt.date >= start) &
-            (df["Date"].dt.date <= end)]
+    df = df[(df["date"].dt.date >= start) &
+            (df["date"].dt.date <= end)]
 
     if len(df) == 0:
         st.warning("No data in selected range")
         st.stop()
 
     # ---------------- TABS ----------------
-    tab1, tab2, tab3 = st.tabs(["📊 Dashboard","📈 Trends","🤖 AI"])
+    tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "📈 Trends", "🤖 AI"])
 
     # ---------------- DASHBOARD ----------------
     with tab1:
 
-        total_sales = df["Sales"].sum()
-        total_expenses = df["Expenses"].sum()
-        total_profit = df["Profit"].sum()
+        total_sales = df["revenue"].sum()
+        total_expenses = df["cost"].sum()
+        total_profit = df["profit"].sum()
 
-        c1,c2,c3 = st.columns(3)
+        margin = (total_profit / total_sales) * 100 if total_sales else 0
+
+        c1, c2, c3, c4 = st.columns(4)
         c1.metric("Sales", f"${total_sales:.2f}")
         c2.metric("Expenses", f"${total_expenses:.2f}")
         c3.metric("Profit", f"${total_profit:.2f}")
-
-        st.subheader("📊 Industry KPIs")
-
-        if industry == "Restaurant":
-            food_cost = (total_expenses / total_sales)*100 if total_sales else 0
-            st.metric("🍔 Food Cost %", f"{food_cost:.2f}%")
-
-        elif industry == "Retail":
-            margin = (total_profit / total_sales)*100 if total_sales else 0
-            st.metric("🛒 Profit Margin", f"{margin:.2f}%")
-
-        elif industry == "Gas Station":
-            margin = (total_profit / total_sales)*100 if total_sales else 0
-            st.metric("⛽ Margin %", f"{margin:.2f}%")
+        c4.metric("Profit Margin", f"{margin:.2f}%")
 
         st.dataframe(df)
 
     # ---------------- TRENDS ----------------
     with tab2:
-        st.line_chart(df[["Sales","Expenses","Profit"]])
+        st.line_chart(df[["revenue", "cost", "profit"]])
 
     # ---------------- AI ----------------
     with tab3:
@@ -191,10 +166,8 @@ if uploaded_file or use_sample:
             summary = df.describe().to_string()
 
             prompt = f"""
-            Business: {user['name']}
-            Industry: {industry}
+            Analyze this business data and give insights.
 
-            Data:
             {summary}
 
             Question: {user_input}
@@ -209,11 +182,11 @@ if uploaded_file or use_sample:
             except:
                 reply = "AI unavailable"
 
-            st.session_state.history.append(("You",user_input))
-            st.session_state.history.append(("AI",reply))
+            st.session_state.history.append(("You", user_input))
+            st.session_state.history.append(("AI", reply))
 
-        for role,msg in st.session_state.history:
+        for role, msg in st.session_state.history:
             st.write(f"**{role}:** {msg}")
 
 else:
-    st.info("Upload data or use sample")
+    st.info("Upload a CSV file or use sample data")
