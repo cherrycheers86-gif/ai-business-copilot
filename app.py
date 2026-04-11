@@ -82,6 +82,7 @@ if uploaded_file or use_sample:
     else:
         df = pd.read_csv(uploaded_file)
 
+    # Clean data
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df["revenue"] = pd.to_numeric(df["revenue"], errors="coerce")
     df["cost"] = pd.to_numeric(df["cost"], errors="coerce")
@@ -111,62 +112,46 @@ if uploaded_file or use_sample:
 
         st.subheader("🤖 AI Assistant")
 
-        # -------- SHOW CHAT --------
+        # -------- DISPLAY CHAT --------
         for msg in st.session_state.messages:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
 
         # -------- INPUT --------
-        user_input = st.chat_input("Ask your business question...")
+        user_input = st.chat_input("Ask anything about your data...")
 
         if user_input:
 
-            # Show user message
             st.session_state.messages.append({"role": "user", "content": user_input})
 
             q = user_input.lower()
             response = ""
             chart_data = None
 
-            # -------- MONTH FILTER --------
-            if "january" in q:
-                data = df[df["date"].dt.month == 1]
-            elif "february" in q or "feb" in q:
-                data = df[df["date"].dt.month == 2]
-            else:
-                data = df
-
-            # -------- CHART --------
-            if any(x in q for x in ["chart","plot","graph"]):
-                chart_data = data
+            # -------- SIMPLE RULES (FAST) --------
+            if "chart" in q:
+                chart_data = df
                 response = "Here is your chart 👇"
 
-            # -------- CALCULATIONS --------
-            elif "profit" in q:
-                response = f"Total profit: ${data['profit'].sum():.2f}"
+            elif "total profit" in q:
+                response = f"${df['profit'].sum():.2f}"
 
-            elif "revenue" in q or "sales" in q:
-                response = f"Total revenue: ${data['revenue'].sum():.2f}"
+            elif "total sales" in q or "total revenue" in q:
+                response = f"${df['revenue'].sum():.2f}"
 
-            elif "max profit" in q:
-                row = data.loc[data["profit"].idxmax()]
-                response = f"Max profit: {row['profit']} on {row['date'].date()}"
-
-            elif "lowest profit" in q:
-                row = data.loc[data["profit"].idxmin()]
-                response = f"Lowest profit: {row['profit']} on {row['date'].date()}"
-
-            # -------- AI INSIGHTS --------
+            # -------- AI → CODE ENGINE --------
             else:
-                prompt = f"""
-                You are a business analyst.
 
-                DO NOT calculate numbers.
-                DO NOT generate code.
+                code_prompt = f"""
+                Convert the question into pandas code.
 
-                Give insights based on data:
+                RULES:
+                - Use only df
+                - No imports
+                - Return one line of code
+                - Must return value
 
-                {data.head(10).to_string()}
+                Columns: {list(df.columns)}
 
                 Question: {user_input}
                 """
@@ -174,14 +159,28 @@ if uploaded_file or use_sample:
                 try:
                     ai = client.chat.completions.create(
                         model="llama-3.1-8b-instant",
-                        messages=[{"role":"user","content":prompt}],
-                        temperature=0.3
+                        messages=[{"role": "user", "content": code_prompt}],
+                        temperature=0
                     )
-                    response = ai.choices[0].message.content
+
+                    code = ai.choices[0].message.content.strip()
+
+                    # -------- SECURITY --------
+                    unsafe = ["import", "os", "sys", "open", "exec", "__"]
+
+                    if any(x in code.lower() for x in unsafe):
+                        response = "Unsafe query blocked."
+                    else:
+                        try:
+                            result = eval(code, {"df": df})
+                            response = f"Result:\n{result}"
+                        except:
+                            response = "Could not compute."
+
                 except:
                     response = "AI unavailable"
 
-            # Save AI message
+            # -------- SAVE --------
             st.session_state.messages.append({"role": "assistant", "content": response})
 
             if chart_data is not None:
