@@ -16,9 +16,6 @@ if "user" not in st.session_state:
 if "history" not in st.session_state:
     st.session_state.history = []
 
-if "quick_q" not in st.session_state:
-    st.session_state.quick_q = ""
-
 # ---------------- AUTH ----------------
 if st.session_state.page == "auth":
 
@@ -33,19 +30,13 @@ if st.session_state.page == "auth":
         name = st.text_input("Name")
 
         if st.button("Create Account"):
-            st.session_state.user = {
-                "name": name,
-                "email": email
-            }
+            st.session_state.user = {"name": name, "email": email}
             st.session_state.page = "onboarding"
             st.rerun()
 
     else:
         if st.button("Login"):
-            st.session_state.user = {
-                "name": "User",
-                "email": email
-            }
+            st.session_state.user = {"name": "User", "email": email}
             st.session_state.page = "app"
             st.rerun()
 
@@ -56,11 +47,7 @@ if st.session_state.page == "onboarding":
 
     st.title("🏢 Setup Your Business")
 
-    industry = st.selectbox(
-        "Industry",
-        ["Restaurant", "Retail", "Gas Station", "Other"]
-    )
-
+    industry = st.selectbox("Industry", ["Restaurant", "Retail", "Gas Station", "Other"])
     size = st.selectbox("Business Size", ["Small", "Medium", "Large"])
 
     if st.button("Continue"):
@@ -101,7 +88,6 @@ if uploaded_file or use_sample:
     else:
         df = pd.read_csv(uploaded_file)
 
-    # Validate
     required_cols = ["date", "revenue", "cost"]
 
     if not all(col in df.columns for col in required_cols):
@@ -126,8 +112,7 @@ if uploaded_file or use_sample:
     start = st.sidebar.date_input("Start", df["date"].min().date())
     end = st.sidebar.date_input("End", df["date"].max().date())
 
-    df = df[(df["date"].dt.date >= start) &
-            (df["date"].dt.date <= end)]
+    df = df[(df["date"].dt.date >= start) & (df["date"].dt.date <= end)]
 
     if len(df) == 0:
         st.warning("No data in selected range")
@@ -138,12 +123,13 @@ if uploaded_file or use_sample:
 
     # ---------------- DASHBOARD ----------------
     with tab1:
+
         total_sales = df["revenue"].sum()
         total_expenses = df["cost"].sum()
         total_profit = df["profit"].sum()
         margin = (total_profit / total_sales) * 100 if total_sales else 0
 
-        c1,c2,c3,c4 = st.columns(4)
+        c1, c2, c3, c4 = st.columns(4)
         c1.metric("Sales", f"${total_sales:.2f}")
         c2.metric("Expenses", f"${total_expenses:.2f}")
         c3.metric("Profit", f"${total_profit:.2f}")
@@ -153,7 +139,7 @@ if uploaded_file or use_sample:
 
     # ---------------- TRENDS ----------------
     with tab2:
-        st.line_chart(df[["revenue","cost","profit"]])
+        st.line_chart(df.set_index("date")[["revenue", "cost", "profit"]])
 
     # ---------------- AI ----------------
     with tab3:
@@ -174,7 +160,7 @@ if uploaded_file or use_sample:
         st.markdown("---")
 
         with st.form("chat_form", clear_on_submit=True):
-            user_input = st.text_input("Ask a question")
+            user_input = st.text_input("Ask your business question")
             submitted = st.form_submit_button("Send")
 
             if submitted and user_input:
@@ -182,15 +168,14 @@ if uploaded_file or use_sample:
                 q = user_input.lower()
                 result = None
 
-                # -------- ACCURATE PYTHON LOGIC --------
-                if "maximum profit" in q and "january" in q:
-                    jan = df[df["date"].dt.month == 1]
-                    row = jan.loc[jan["profit"].idxmax()]
-                    result = f"Maximum profit in January is {row['profit']:.2f} on {row['date'].date()}"
+                # -------- STRUCTURED LOGIC --------
+                if "maximum profit" in q:
+                    row = df.loc[df["profit"].idxmax()]
+                    result = f"Maximum profit is {row['profit']:.2f} on {row['date'].date()}"
 
-                elif "maximum sale" in q:
-                    row = df.loc[df["revenue"].idxmax()]
-                    result = f"Maximum sales is {row['revenue']:.2f} on {row['date'].date()}"
+                elif "lowest profit" in q:
+                    row = df.loc[df["profit"].idxmin()]
+                    result = f"Lowest profit is {row['profit']:.2f} on {row['date'].date()}"
 
                 elif "total sales" in q:
                     result = f"Total sales is {df['revenue'].sum():.2f}"
@@ -199,24 +184,42 @@ if uploaded_file or use_sample:
                     margin = (df["profit"].sum() / df["revenue"].sum()) * 100
                     result = f"Profit margin is {margin:.2f}%"
 
-                # -------- AI RESPONSE --------
-                if result:
-                    prompt = f"""
-                    Explain this clearly and briefly:
+                elif "january" in q:
+                    jan = df[df["date"].dt.month == 1]
+                    if "maximum profit" in q:
+                        row = jan.loc[jan["profit"].idxmax()]
+                        result = f"Max profit in January is {row['profit']:.2f} on {row['date'].date()}"
+                    elif "lowest profit" in q:
+                        row = jan.loc[jan["profit"].idxmin()]
+                        result = f"Lowest profit in January is {row['profit']:.2f} on {row['date'].date()}"
 
-                    {result}
-                    """
+                # -------- CHART HANDLING --------
+                if "chart" in q:
+                    if "january" in q:
+                        jan = df[df["date"].dt.month == 1]
+                        st.line_chart(jan.set_index("date")[["revenue", "cost", "profit"]])
+                        result = "Here is the January chart."
+                    elif "sales vs expenses" in q:
+                        st.line_chart(df.set_index("date")[["revenue", "cost"]])
+                        result = "Here is the sales vs expenses chart."
+                    else:
+                        st.line_chart(df.set_index("date")[["revenue", "cost", "profit"]])
+                        result = "Here is the chart."
+
+                # -------- AI FALLBACK --------
+                if result:
+                    prompt = f"Explain briefly: {result}"
                 else:
                     prompt = f"""
-                    You are a business assistant.
+                    You are a business analyst.
 
                     RULES:
-                    - DO NOT write code
-                    - Give direct answers
+                    - Do NOT write code
+                    - Give direct insights
                     - Be concise
 
                     DATA:
-                    {df.head(20).to_string()}
+                    {df.head(30).to_string()}
 
                     QUESTION:
                     {user_input}
@@ -225,7 +228,7 @@ if uploaded_file or use_sample:
                 try:
                     response = client.chat.completions.create(
                         model="llama-3.1-8b-instant",
-                        messages=[{"role":"user","content":prompt}]
+                        messages=[{"role": "user", "content": prompt}]
                     )
                     reply = response.choices[0].message.content
                 except:
