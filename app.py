@@ -16,8 +16,8 @@ if "user" not in st.session_state:
 if "history" not in st.session_state:
     st.session_state.history = []
 
-if "quick_q" not in st.session_state:
-    st.session_state.quick_q = ""
+if "last_chart" not in st.session_state:
+    st.session_state.last_chart = None
 
 # ---------------- AUTH ----------------
 if st.session_state.page == "auth":
@@ -31,13 +31,13 @@ if st.session_state.page == "auth":
     if mode == "Signup":
         name = st.text_input("Name")
         if st.button("Create Account"):
-            st.session_state.user = {"name": name, "email": email}
+            st.session_state.user = {"name": name}
             st.session_state.page = "onboarding"
             st.rerun()
 
     else:
         if st.button("Login"):
-            st.session_state.user = {"name": "User", "email": email}
+            st.session_state.user = {"name": "User"}
             st.session_state.page = "app"
             st.rerun()
 
@@ -46,35 +46,30 @@ if st.session_state.page == "auth":
 # ---------------- ONBOARDING ----------------
 if st.session_state.page == "onboarding":
 
-    st.title("🏢 Setup Your Business")
+    st.title("🏢 Setup Business")
 
     industry = st.selectbox("Industry", ["Restaurant", "Retail", "Gas Station", "Other"])
-    size = st.selectbox("Business Size", ["Small", "Medium", "Large"])
+    size = st.selectbox("Size", ["Small", "Medium", "Large"])
 
     if st.button("Continue"):
-        st.session_state.user["industry"] = industry
-        st.session_state.user["size"] = size
         st.session_state.page = "app"
         st.rerun()
 
     st.stop()
 
 # ---------------- MAIN ----------------
-user = st.session_state.user
-
 st.title("🚀 AI Business Copilot")
-st.success(f"Welcome {user['name']} 👋")
+st.success(f"Welcome {st.session_state.user['name']}")
 
 if st.sidebar.button("Logout"):
     st.session_state.page = "auth"
-    st.session_state.user = None
     st.session_state.history = []
     st.rerun()
 
-# ---------------- DATA ----------------
 uploaded_file = st.sidebar.file_uploader("Upload CSV", type=["csv"])
 use_sample = st.sidebar.button("Use Sample Data")
 
+# ---------------- LOAD DATA ----------------
 if uploaded_file or use_sample:
 
     if use_sample:
@@ -86,7 +81,6 @@ if uploaded_file or use_sample:
     else:
         df = pd.read_csv(uploaded_file)
 
-    # Clean
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df["revenue"] = pd.to_numeric(df["revenue"], errors="coerce")
     df["cost"] = pd.to_numeric(df["cost"], errors="coerce")
@@ -115,18 +109,12 @@ if uploaded_file or use_sample:
 
     # ---------------- DASHBOARD ----------------
     with tab1:
-
         total_sales = df["revenue"].sum()
-        total_expenses = df["cost"].sum()
         total_profit = df["profit"].sum()
 
-        margin = (total_profit / total_sales) * 100 if total_sales else 0
-
-        c1,c2,c3,c4 = st.columns(4)
+        c1, c2 = st.columns(2)
         c1.metric("Sales", f"${total_sales:.2f}")
-        c2.metric("Expenses", f"${total_expenses:.2f}")
-        c3.metric("Profit", f"${total_profit:.2f}")
-        c4.metric("Margin", f"{margin:.2f}%")
+        c2.metric("Profit", f"${total_profit:.2f}")
 
         st.dataframe(df)
 
@@ -139,37 +127,14 @@ if uploaded_file or use_sample:
 
         st.subheader("🤖 AI Assistant")
 
-        # -------- AUTO INSIGHTS --------
+        # Auto insights
         best = df.loc[df["profit"].idxmax()]
         worst = df.loc[df["profit"].idxmin()]
 
         st.success(f"Best Day: {best['date'].date()} (${best['profit']:.2f})")
         st.error(f"Worst Day: {worst['date'].date()} (${worst['profit']:.2f})")
 
-        # -------- ALERTS --------
-        margin = (df["profit"].sum() / df["revenue"].sum()) * 100
-
-        if margin < 20:
-            st.warning("Low profit margin")
-
-        if df["cost"].mean() > df["revenue"].mean() * 0.7:
-            st.warning("High expenses")
-
-        # -------- SUGGESTIONS --------
-        st.markdown("### 💡 Suggestions")
-
-        col1,col2,col3 = st.columns(3)
-
-        if col1.button("Best Day"):
-            st.session_state.quick_q = "best day"
-
-        if col2.button("Worst Day"):
-            st.session_state.quick_q = "worst day"
-
-        if col3.button("Top 3 Profit Days"):
-            st.session_state.quick_q = "top 3 profit"
-
-        # -------- CHAT --------
+        # Chat history
         for role, msg in st.session_state.history:
             st.markdown(f"**{role}:** {msg}")
 
@@ -178,67 +143,61 @@ if uploaded_file or use_sample:
         user_input = st.chat_input("Ask your business question...")
 
         if user_input:
+
             q = user_input.lower()
-            result = None
+            result_parts = []
+            chart_data = None
+            need_ai = False
 
-            # -------- CHARTS --------
-            if "chart" in q or "graph" in q:
-                if "january" in q:
-                    data = df[df["date"].dt.month == 1]
-                elif "february" in q or "feb" in q:
-                    data = df[df["date"].dt.month == 2]
-                else:
-                    data = df
+            # -------- MONTH FILTER --------
+            if "january" in q:
+                data = df[df["date"].dt.month == 1]
+            elif "february" in q or "feb" in q:
+                data = df[df["date"].dt.month == 2]
+            else:
+                data = df
 
+            # -------- CHART --------
+            if any(x in q for x in ["chart","graph","plot","visualize"]):
                 if len(data) > 0:
-                    st.line_chart(data.set_index("date")[["revenue","cost","profit"]])
-                    result = "Chart displayed"
+                    chart_data = data
+                    result_parts.append("Chart generated below")
                 else:
-                    result = "No data available"
+                    result_parts.append("No data available")
 
             # -------- CALCULATIONS --------
-            elif "top 3" in q:
-                top3 = df.nlargest(3,"profit")[["date","profit"]]
-                result = top3.to_string(index=False)
+            if "max profit" in q:
+                row = data.loc[data["profit"].idxmax()]
+                result_parts.append(f"Max profit: {row['profit']} on {row['date'].date()}")
 
-            elif "best day" in q:
-                result = f"{best['date'].date()} (${best['profit']:.2f})"
+            if "lowest profit" in q:
+                row = data.loc[data["profit"].idxmin()]
+                result_parts.append(f"Lowest profit: {row['profit']} on {row['date'].date()}")
 
-            elif "worst day" in q:
-                result = f"{worst['date'].date()} (${worst['profit']:.2f})"
+            if "total sales" in q:
+                result_parts.append(f"Total sales: {data['revenue'].sum():.2f}")
 
-            elif "max profit" in q:
-                row = df.loc[df["profit"].idxmax()]
-                result = f"{row['profit']} on {row['date'].date()}"
+            if "average profit" in q:
+                result_parts.append(f"Average profit: {data['profit'].mean():.2f}")
 
-            elif "lowest profit" in q:
-                row = df.loc[df["profit"].idxmin()]
-                result = f"{row['profit']} on {row['date'].date()}"
+            if "top 3" in q:
+                top3 = data.nlargest(3,"profit")
+                formatted = "\n".join(
+                    [f"{row['date'].date()} → ${row['profit']}" for _, row in top3.iterrows()]
+                )
+                result_parts.append(f"Top 3 days:\n{formatted}")
 
-            elif "total sales" in q:
-                result = f"{df['revenue'].sum():.2f}"
-
-            elif "average profit" in q:
-                result = f"{df['profit'].mean():.2f}"
-
-            # -------- SMART BLOCK (FIXED) --------
-            calc_keywords = ["max","maximum","min","minimum","average","total","top"]
-
-            if any(x in q for x in calc_keywords) and result is None:
-                result = "Calculation not supported yet"
+            # -------- INSIGHT DETECTION --------
+            if any(x in q for x in ["how","why","trend","explain","performance"]):
+                need_ai = True
 
             # -------- AI INSIGHTS --------
-            if result is None:
+            if need_ai:
                 prompt = f"""
-                You are a business analyst.
-
-                RULES:
-                - No calculations
-                - No code
-                - Only insights
+                Give business insights only.
 
                 Data:
-                {df.head(30).to_string()}
+                {data.head(30).to_string()}
 
                 Question:
                 {user_input}
@@ -249,14 +208,28 @@ if uploaded_file or use_sample:
                         model="llama-3.1-8b-instant",
                         messages=[{"role":"user","content":prompt}]
                     )
-                    result = response.choices[0].message.content
+                    result_parts.append(response.choices[0].message.content)
                 except:
-                    result = "AI unavailable"
+                    result_parts.append("AI unavailable")
+
+            # -------- FINAL RESULT --------
+            if not result_parts:
+                result_parts.append("I couldn't understand the query clearly.")
+
+            final_result = "\n\n".join(result_parts)
 
             st.session_state.history.append(("You", user_input))
-            st.session_state.history.append(("AI", result))
+            st.session_state.history.append(("AI", final_result))
 
-            st.rerun()
+            if chart_data is not None:
+                st.session_state.last_chart = chart_data
+
+        # -------- RENDER CHART --------
+        if st.session_state.last_chart is not None:
+            st.markdown("### 📊 Chart")
+            st.line_chart(
+                st.session_state.last_chart.set_index("date")[["revenue","cost","profit"]]
+            )
 
 else:
     st.info("Upload data to start")
