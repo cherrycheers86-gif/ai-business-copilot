@@ -4,14 +4,30 @@ from groq import Groq
 import io
 
 # Page config
-st.set_page_config(page_title="AI Business Copilot", layout="wide")
+st.set_page_config(page_title="ProfitLens AI", layout="wide")
 
-# API Key
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
-# Title
-st.title("🚀 AI Business Copilot")
-st.markdown("### Analyze your business and get AI insights instantly")
+# ----------- CUSTOM STYLE -----------
+st.markdown("""
+    <style>
+    .main {
+        background-color: #0e1117;
+    }
+    h1, h2, h3 {
+        color: white;
+    }
+    .stMetric {
+        background-color: #1c1f26;
+        padding: 10px;
+        border-radius: 10px;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# ----------- HEADER -----------
+st.markdown("## 🚀 ProfitLens AI")
+st.markdown("### 📊 Smart Business Insights Dashboard")
 
 # Sidebar
 st.sidebar.header("⚙️ Controls")
@@ -34,26 +50,22 @@ if uploaded_file or use_sample:
     else:
         df = pd.read_csv(uploaded_file)
 
-    # Convert Date
     if "Date" in df.columns:
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
 
-    # Add Profit
     df["Profit"] = df["Sales"] - df["Expenses"]
 
     # FILTER
     if "Date" in df.columns:
         st.sidebar.subheader("📅 Filter Data")
+        start_date = st.sidebar.date_input("Start", df["Date"].min().date())
+        end_date = st.sidebar.date_input("End", df["Date"].max().date())
 
-        start_date = st.sidebar.date_input("Start Date", df["Date"].min().date())
-        end_date = st.sidebar.date_input("End Date", df["Date"].max().date())
-
-        mask = (df["Date"].dt.date >= start_date) & (df["Date"].dt.date <= end_date)
-        df = df.loc[mask]
+        df = df[(df["Date"].dt.date >= start_date) & 
+                (df["Date"].dt.date <= end_date)]
 
     # VIEW TYPE
-    st.sidebar.subheader("📊 View Type")
-    view_type = st.sidebar.selectbox("Select View", ["Daily", "Monthly"])
+    view_type = st.sidebar.selectbox("View", ["Daily", "Monthly"])
 
     if "Date" in df.columns:
         df["Month"] = df["Date"].dt.to_period("M").astype(str)
@@ -61,145 +73,105 @@ if uploaded_file or use_sample:
         if view_type == "Monthly":
             df = df.groupby("Month").sum(numeric_only=True).reset_index()
 
-    # Tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 Dashboard", "📈 Trends", "🤖 AI Chat", "📥 Report"])
+    # ----------- METRICS -----------
+    total_sales = df["Sales"].sum()
+    total_expenses = df["Expenses"].sum()
+    total_profit = df["Profit"].sum()
 
-    # ---------------- DASHBOARD ----------------
-    with tab1:
-        st.subheader("📊 Business Overview")
+    st.markdown("### 📊 Overview")
 
-        total_sales = df["Sales"].sum()
-        total_expenses = df["Expenses"].sum()
-        total_profit = df["Profit"].sum()
+    c1, c2, c3 = st.columns(3)
+    c1.metric("💰 Sales", f"${total_sales}")
+    c2.metric("💸 Expenses", f"${total_expenses}")
+    c3.metric("📈 Profit", f"${total_profit}")
 
-        c1, c2, c3 = st.columns(3)
-        c1.metric("💰 Sales", f"${total_sales}")
-        c2.metric("💸 Expenses", f"${total_expenses}")
-        c3.metric("📈 Profit", f"${total_profit}")
+    # ----------- MAIN LAYOUT -----------
+    left, right = st.columns([2, 1])
 
-        st.divider()
+    with left:
+        st.markdown("### 📈 Performance Trends")
+        st.line_chart(df[["Sales", "Expenses", "Profit"]])
 
-        col1, col2 = st.columns([2,1])
+        st.markdown("### 📋 Data Table")
+        st.dataframe(df, use_container_width=True)
 
-        with col1:
-            st.dataframe(df)
-
-            # Best Day
-            if "Date" in df.columns and len(df) > 0:
-                best_day = df.loc[df["Sales"].idxmax()]
-                st.success(f"🏆 Best Sales Day: {best_day['Date']} (${best_day['Sales']})")
-
-        with col2:
-            st.subheader("🚨 Issues")
-
-            if total_profit > 0:
-                st.success("Profitable")
-            else:
-                st.error("Loss detected")
-
-            if total_expenses > total_sales * 0.7:
-                st.warning("High expenses")
-
-            if len(df) > 0 and df["Sales"].iloc[-1] < df["Sales"].mean():
-                st.warning("Sales dropping")
-
-            st.subheader("💡 Recommendations")
-
-            if total_expenses > total_sales * 0.7:
-                st.write("- Reduce supplier cost")
-
-            if len(df) > 0 and df["Sales"].iloc[-1] < df["Sales"].mean():
-                st.write("- Increase marketing")
-
-            if total_profit > 0:
-                st.write("- Reinvest profits")
-
-        # Profit Margin
-        st.subheader("📊 Profit Margin")
-
-        if total_sales > 0:
-            profit_margin = (total_profit / total_sales) * 100
-            st.metric("Profit Margin", f"{profit_margin:.2f}%")
-
-        # Smart Alert
-        st.subheader("⚡ Smart Alert")
+    with right:
+        st.markdown("### 🚨 Alerts")
 
         if total_profit < 0:
-            st.error("🔥 You're losing money!")
+            st.error("🔥 Loss detected")
         elif total_profit < total_sales * 0.1:
             st.warning("⚠️ Low profit margin")
         else:
-            st.success("🚀 Healthy business")
+            st.success("🚀 Strong performance")
 
-    # ---------------- TRENDS ----------------
-    with tab2:
-        st.subheader("📈 Trends")
-        st.line_chart(df[["Sales", "Expenses", "Profit"]])
+        if total_expenses > total_sales * 0.7:
+            st.warning("High expenses")
 
-        # Bar Chart
-        chart_df = pd.DataFrame({
-            "Category": ["Sales", "Expenses"],
-            "Amount": [total_sales, total_expenses]
-        })
-        st.bar_chart(chart_df.set_index("Category"))
+        if len(df) > 0 and df["Sales"].iloc[-1] < df["Sales"].mean():
+            st.warning("Sales dropping")
 
-    # ---------------- AI CHAT ----------------
-    with tab3:
-        st.subheader("🤖 Ask AI")
+        st.markdown("### 💡 Recommendations")
 
-        user_input = st.text_input("Ask a business question")
+        if total_expenses > total_sales * 0.7:
+            st.write("• Reduce supplier cost")
 
-        if user_input:
-            summary = df.describe().to_string()
+        if len(df) > 0 and df["Sales"].iloc[-1] < df["Sales"].mean():
+            st.write("• Increase promotions")
 
-            prompt = f"""
-            You are a business expert.
+        if total_profit > 0:
+            st.write("• Reinvest profits")
 
-            Analyze the data and provide:
-            - Key insights
-            - Problems
-            - Suggestions
+    # ----------- AI CHAT -----------
+    st.markdown("---")
+    st.markdown("### 🤖 AI Assistant")
 
-            Data:
-            {summary}
+    user_input = st.text_input("Ask anything about your business")
 
-            Question: {user_input}
-            """
+    if user_input:
+        summary = df.describe().to_string()
 
-            response = client.chat.completions.create(
-                model="llama-3.1-8b-instant",
-                messages=[{"role": "user", "content": prompt}]
-            )
+        prompt = f"""
+        You are a business consultant.
 
-            ai_reply = response.choices[0].message.content
+        Analyze:
+        {summary}
 
-            st.session_state.history.append(("You", user_input))
-            st.session_state.history.append(("AI", ai_reply))
+        Question: {user_input}
 
-        for role, msg in st.session_state.history:
-            if role == "You":
-                st.markdown(f"**🧑 You:** {msg}")
-            else:
-                st.markdown(f"**🤖 AI:** {msg}")
+        Give insights + suggestions.
+        """
 
-    # ---------------- REPORT ----------------
-    with tab4:
-        st.subheader("📥 Download Report")
-
-        report = f"""
-Total Sales: {total_sales}
-Total Expenses: {total_expenses}
-Total Profit: {total_profit}
-"""
-
-        buffer = io.StringIO()
-        buffer.write(report)
-
-        st.download_button(
-            "Download Report",
-            data=buffer.getvalue(),
-            file_name="report.txt"
+        response = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[{"role": "user", "content": prompt}]
         )
 
+        ai_reply = response.choices[0].message.content
+
+        st.session_state.history.append(("You", user_input))
+        st.session_state.history.append(("AI", ai_reply))
+
+    for role, msg in st.session_state.history:
+        if role == "You":
+            st.markdown(f"**🧑 You:** {msg}")
+        else:
+            st.markdown(f"**🤖 AI:** {msg}")
+
+    # ----------- DOWNLOAD -----------
+    st.markdown("---")
+    st.markdown("### 📥 Export Report")
+
+    report = f"""
+Sales: {total_sales}
+Expenses: {total_expenses}
+Profit: {total_profit}
+"""
+
+    buffer = io.StringIO()
+    buffer.write(report)
+
+    st.download_button("Download Report", buffer.getvalue(), "report.txt")
+
 else:
-    st.info("👈 Upload a file or use sample data to start")
+    st.info("👈 Upload data or use sample to begin")
