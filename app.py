@@ -134,7 +134,7 @@ if uploaded_file or use_sample:
         st.stop()
 
     # ---------------- TABS ----------------
-    tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "📈 Trends", "🤖 AI"])
+    tab1, tab2, tab3 = st.tabs(["📊 Dashboard","📈 Trends","🤖 AI"])
 
     # ---------------- DASHBOARD ----------------
     with tab1:
@@ -145,7 +145,7 @@ if uploaded_file or use_sample:
 
         margin = (total_profit / total_sales) * 100 if total_sales else 0
 
-        c1, c2, c3, c4 = st.columns(4)
+        c1,c2,c3,c4 = st.columns(4)
         c1.metric("Sales", f"${total_sales:.2f}")
         c2.metric("Expenses", f"${total_expenses:.2f}")
         c3.metric("Profit", f"${total_profit:.2f}")
@@ -155,7 +155,7 @@ if uploaded_file or use_sample:
 
     # ---------------- TRENDS ----------------
     with tab2:
-        st.line_chart(df[["revenue", "cost", "profit"]])
+        st.line_chart(df[["revenue","cost","profit"]])
 
     # ---------------- AI ----------------
     with tab3:
@@ -163,45 +163,43 @@ if uploaded_file or use_sample:
         st.subheader("🤖 AI Assistant")
 
         # 🔥 Chat history FIRST
-        chat_container = st.container()
-
-        with chat_container:
-            for role, msg in st.session_state.history:
-                if role == "You":
-                    st.markdown(f"**🧑 You:** {msg}")
-                else:
-                    st.markdown(f"**🤖 AI:** {msg}")
+        for role, msg in st.session_state.history:
+            if role == "You":
+                st.markdown(f"**🧑 You:** {msg}")
+            else:
+                st.markdown(f"**🤖 AI:** {msg}")
 
         st.markdown("---")
 
-        # 🔥 FIXED INPUT
-        user_input = st.text_input("Type your question...", key="chat_input")
+        # 🔥 FORM (fixes crash + keeps input stable)
+        with st.form("chat_form", clear_on_submit=True):
+            user_input = st.text_input("Type your question...")
+            submitted = st.form_submit_button("Send")
 
-        if user_input:
-            summary = df.describe().to_string()
+            if submitted and user_input:
+                summary = df.describe().to_string()
 
-            prompt = f"""
-            Analyze this business data and give insights.
+                prompt = f"""
+                Analyze this business data and give insights.
 
-            {summary}
+                {summary}
 
-            Question: {user_input}
-            """
+                Question: {user_input}
+                """
 
-            try:
-                response = client.chat.completions.create(
-                    model="llama-3.1-8b-instant",
-                    messages=[{"role": "user", "content": prompt}]
-                )
-                reply = response.choices[0].message.content
-            except:
-                reply = "AI unavailable"
+                try:
+                    response = client.chat.completions.create(
+                        model="llama-3.1-8b-instant",
+                        messages=[{"role":"user","content":prompt}]
+                    )
+                    reply = response.choices[0].message.content
+                except:
+                    reply = "AI unavailable"
 
-            st.session_state.history.append(("You", user_input))
-            st.session_state.history.append(("AI", reply))
+                st.session_state.history.append(("You", user_input))
+                st.session_state.history.append(("AI", reply))
 
-            st.session_state.chat_input = ""
-            st.rerun()
+                st.rerun()
 
 else:
     st.info("Upload a CSV file or use sample data")
