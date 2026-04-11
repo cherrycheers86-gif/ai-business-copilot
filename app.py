@@ -10,37 +10,58 @@ client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 st.title("🚀 AI Business Copilot")
 st.markdown("Analyze your business data and get smart insights")
 
+# ---------------- SESSION INIT ----------------
+if "form_submitted" not in st.session_state:
+    st.session_state.form_submitted = False
+
+if "customer" not in st.session_state:
+    st.session_state.customer = {}
+
+if "history" not in st.session_state:
+    st.session_state.history = []
+
 # ---------------- CUSTOMER FORM ----------------
-st.header("👤 Enter Your Business Details")
+if not st.session_state.form_submitted:
 
-with st.form("customer_form"):
-    customer_name = st.text_input("Your Name")
-    business_name = st.text_input("Business Name")
+    st.header("👤 Enter Your Business Details")
 
-    industry = st.selectbox(
-        "Industry",
-        ["Restaurant", "Retail", "Gas Station", "Other"]
-    )
+    with st.form("customer_form"):
+        customer_name = st.text_input("Your Name")
+        business_name = st.text_input("Business Name")
 
-    business_size = st.selectbox(
-        "Business Size",
-        ["Small", "Medium", "Large"]
-    )
+        industry = st.selectbox(
+            "Industry",
+            ["Restaurant", "Retail", "Gas Station", "Other"]
+        )
 
-    submitted = st.form_submit_button("Continue")
+        business_size = st.selectbox(
+            "Business Size",
+            ["Small", "Medium", "Large"]
+        )
 
-# STOP until user fills form
-if not submitted:
+        submitted = st.form_submit_button("Continue")
+
+    if submitted:
+        st.session_state.customer = {
+            "name": customer_name,
+            "business": business_name,
+            "industry": industry,
+            "size": business_size
+        }
+
+        st.session_state.form_submitted = True
+        st.rerun()
+
     st.warning("Please fill your details to continue")
     st.stop()
 
-# Save user
-st.session_state.customer = {
-    "name": customer_name,
-    "business": business_name,
-    "industry": industry,
-    "size": business_size
-}
+# ---------------- USE SAVED CUSTOMER ----------------
+customer = st.session_state.customer
+
+customer_name = customer["name"]
+business_name = customer["business"]
+industry = customer["industry"]
+business_size = customer["size"]
 
 st.success(f"Welcome {customer_name}! 🚀")
 
@@ -49,10 +70,6 @@ st.sidebar.header("⚙️ Controls")
 
 uploaded_file = st.sidebar.file_uploader("Upload CSV", type=["csv"])
 use_sample = st.sidebar.button("Use Sample Data")
-
-# Chat memory
-if "history" not in st.session_state:
-    st.session_state.history = []
 
 # ---------------- LOAD DATA ----------------
 if uploaded_file or use_sample:
@@ -82,7 +99,7 @@ if uploaded_file or use_sample:
         df = df[(df["Date"].dt.date >= start) & 
                 (df["Date"].dt.date <= end)]
 
-    # VIEW TYPE
+    # ---------------- VIEW ----------------
     st.sidebar.subheader("📊 View")
     view = st.sidebar.selectbox("View Type", ["Daily", "Monthly"])
 
@@ -91,14 +108,14 @@ if uploaded_file or use_sample:
         if view == "Monthly":
             df = df.groupby("Month").sum(numeric_only=True).reset_index()
 
-    # SEARCH
+    # ---------------- SEARCH ----------------
     st.sidebar.subheader("🔍 Search")
     search = st.sidebar.text_input("Search")
 
     if search:
         df = df[df.astype(str).apply(lambda x: x.str.contains(search, case=False).any(), axis=1)]
 
-    # SORT
+    # ---------------- SORT ----------------
     st.sidebar.subheader("↕️ Sort")
     sort_col = st.sidebar.selectbox("Sort by", df.columns)
     order = st.sidebar.radio("Order", ["Ascending", "Descending"])
@@ -161,16 +178,6 @@ if uploaded_file or use_sample:
 
             if total_profit > 0:
                 st.write("- Reinvest profits")
-
-        # Industry insights
-        st.subheader("📊 Industry Insights")
-
-        if industry == "Restaurant":
-            st.info("Food cost should be < 30% of revenue")
-        elif industry == "Retail":
-            st.info("Focus on inventory turnover")
-        elif industry == "Gas Station":
-            st.info("Focus on store sales beyond fuel")
 
     # ---------------- TRENDS ----------------
     with tab2:
