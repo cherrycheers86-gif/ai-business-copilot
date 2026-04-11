@@ -10,29 +10,31 @@ client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 st.title("🚀 AI Business Copilot")
 st.markdown("Analyze your business data and get smart insights")
 
-# ---------------- SIDEBAR ----------------
-st.sidebar.header("⚙️ Controls")
+# ---------------- CUSTOMER FORM ----------------
+st.header("👤 Enter Your Business Details")
 
-uploaded_file = st.sidebar.file_uploader("Upload CSV", type=["csv"])
-use_sample = st.sidebar.button("Use Sample Data")
+with st.form("customer_form"):
+    customer_name = st.text_input("Your Name")
+    business_name = st.text_input("Business Name")
 
-# 👤 CUSTOMER INFO
-st.sidebar.header("👤 Customer Info")
+    industry = st.selectbox(
+        "Industry",
+        ["Restaurant", "Retail", "Gas Station", "Other"]
+    )
 
-customer_name = st.sidebar.text_input("Name")
-business_name = st.sidebar.text_input("Business Name")
+    business_size = st.selectbox(
+        "Business Size",
+        ["Small", "Medium", "Large"]
+    )
 
-industry = st.sidebar.selectbox(
-    "Industry",
-    ["Restaurant", "Retail", "Gas Station", "Other"]
-)
+    submitted = st.form_submit_button("Continue")
 
-business_size = st.sidebar.selectbox(
-    "Business Size",
-    ["Small", "Medium", "Large"]
-)
+# STOP until user fills form
+if not submitted:
+    st.warning("Please fill your details to continue")
+    st.stop()
 
-# Save session
+# Save user
 st.session_state.customer = {
     "name": customer_name,
     "business": business_name,
@@ -40,9 +42,13 @@ st.session_state.customer = {
     "size": business_size
 }
 
-# Welcome message
-if customer_name:
-    st.success(f"Welcome {customer_name}! 🚀")
+st.success(f"Welcome {customer_name}! 🚀")
+
+# ---------------- SIDEBAR ----------------
+st.sidebar.header("⚙️ Controls")
+
+uploaded_file = st.sidebar.file_uploader("Upload CSV", type=["csv"])
+use_sample = st.sidebar.button("Use Sample Data")
 
 # Chat memory
 if "history" not in st.session_state:
@@ -60,6 +66,7 @@ if uploaded_file or use_sample:
     else:
         df = pd.read_csv(uploaded_file)
 
+    # Convert Date
     if "Date" in df.columns:
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
 
@@ -68,13 +75,14 @@ if uploaded_file or use_sample:
     # ---------------- FILTER ----------------
     if "Date" in df.columns:
         st.sidebar.subheader("📅 Filter Data")
+
         start = st.sidebar.date_input("Start", df["Date"].min().date())
         end = st.sidebar.date_input("End", df["Date"].max().date())
 
         df = df[(df["Date"].dt.date >= start) & 
                 (df["Date"].dt.date <= end)]
 
-    # VIEW
+    # VIEW TYPE
     st.sidebar.subheader("📊 View")
     view = st.sidebar.selectbox("View Type", ["Daily", "Monthly"])
 
@@ -85,7 +93,7 @@ if uploaded_file or use_sample:
 
     # SEARCH
     st.sidebar.subheader("🔍 Search")
-    search = st.sidebar.text_input("Search value")
+    search = st.sidebar.text_input("Search")
 
     if search:
         df = df[df.astype(str).apply(lambda x: x.str.contains(search, case=False).any(), axis=1)]
@@ -109,8 +117,6 @@ if uploaded_file or use_sample:
         st.write(f"Industry: {industry}")
         st.write(f"Size: {business_size}")
 
-        st.subheader("📊 Business Overview")
-
         total_sales = df["Sales"].sum()
         total_expenses = df["Expenses"].sum()
         total_profit = df["Profit"].sum()
@@ -120,7 +126,6 @@ if uploaded_file or use_sample:
         c2.metric("💸 Expenses", f"${total_expenses}")
         c3.metric("📈 Profit", f"${total_profit}")
 
-        # Profit margin
         if total_sales > 0:
             margin = (total_profit / total_sales) * 100
             st.metric("📊 Profit Margin", f"{margin:.2f}%")
@@ -162,10 +167,8 @@ if uploaded_file or use_sample:
 
         if industry == "Restaurant":
             st.info("Food cost should be < 30% of revenue")
-
         elif industry == "Retail":
             st.info("Focus on inventory turnover")
-
         elif industry == "Gas Station":
             st.info("Focus on store sales beyond fuel")
 
@@ -174,7 +177,6 @@ if uploaded_file or use_sample:
         st.subheader("📈 Trends")
         st.line_chart(df[["Sales", "Expenses", "Profit"]])
 
-        # Moving average
         df["MA"] = df["Sales"].rolling(3).mean()
         st.line_chart(df[["Sales", "MA"]])
 
