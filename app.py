@@ -19,9 +19,11 @@ if "history" not in st.session_state:
 if "last_chart" not in st.session_state:
     st.session_state.last_chart = None
 
+if "last_question" not in st.session_state:
+    st.session_state.last_question = ""
+
 # ---------------- AUTH ----------------
 if st.session_state.page == "auth":
-
     st.title("🔐 Login / Signup")
 
     mode = st.radio("Select", ["Login", "Signup"])
@@ -34,7 +36,6 @@ if st.session_state.page == "auth":
             st.session_state.user = {"name": name}
             st.session_state.page = "onboarding"
             st.rerun()
-
     else:
         if st.button("Login"):
             st.session_state.user = {"name": "User"}
@@ -45,10 +46,9 @@ if st.session_state.page == "auth":
 
 # ---------------- ONBOARDING ----------------
 if st.session_state.page == "onboarding":
-
     st.title("🏢 Setup Business")
 
-    industry = st.selectbox("Industry", ["Restaurant", "Retail", "Gas Station", "Other"])
+    industry = st.selectbox("Industry", ["Restaurant", "Retail", "Other"])
     size = st.selectbox("Size", ["Small", "Medium", "Large"])
 
     if st.button("Continue"):
@@ -92,30 +92,13 @@ if uploaded_file or use_sample:
 
     df["profit"] = df["revenue"] - df["cost"]
 
-    # ---------------- FILTER ----------------
-    st.sidebar.subheader("📅 Filter")
-
-    start = st.sidebar.date_input("Start", df["date"].min().date())
-    end = st.sidebar.date_input("End", df["date"].max().date())
-
-    df = df[(df["date"].dt.date >= start) & (df["date"].dt.date <= end)]
-
-    if len(df) == 0:
-        st.warning("No data")
-        st.stop()
-
     # ---------------- TABS ----------------
     tab1, tab2, tab3 = st.tabs(["📊 Dashboard","📈 Trends","🤖 AI"])
 
     # ---------------- DASHBOARD ----------------
     with tab1:
-        total_sales = df["revenue"].sum()
-        total_profit = df["profit"].sum()
-
-        c1, c2 = st.columns(2)
-        c1.metric("Sales", f"${total_sales:.2f}")
-        c2.metric("Profit", f"${total_profit:.2f}")
-
+        st.metric("Sales", f"${df['revenue'].sum():.2f}")
+        st.metric("Profit", f"${df['profit'].sum():.2f}")
         st.dataframe(df)
 
     # ---------------- TRENDS ----------------
@@ -127,22 +110,39 @@ if uploaded_file or use_sample:
 
         st.subheader("🤖 AI Assistant")
 
-        # Auto insights
-        best = df.loc[df["profit"].idxmax()]
-        worst = df.loc[df["profit"].idxmin()]
+        # 🔥 CSS FOR SCROLLABLE CHAT + FIXED INPUT LOOK
+        st.markdown("""
+        <style>
+        .chat-container {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            background: #fafafa;
+        }
+        </style>
+        """, unsafe_allow_html=True)
 
-        st.success(f"Best Day: {best['date'].date()} (${best['profit']:.2f})")
-        st.error(f"Worst Day: {worst['date'].date()} (${worst['profit']:.2f})")
+        # -------- CHAT DISPLAY --------
+        chat_box = st.container()
 
-        # Chat history
-        for role, msg in st.session_state.history:
-            st.markdown(f"**{role}:** {msg}")
+        with chat_box:
+            st.markdown('<div class="chat-container">', unsafe_allow_html=True)
 
-        st.markdown("---")
+            for role, msg in st.session_state.history:
+                if role == "You":
+                    st.markdown(f"🧑 **You:** {msg}")
+                else:
+                    st.markdown(f"🤖 **AI:** {msg}")
 
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        # -------- INPUT --------
         user_input = st.chat_input("Ask your business question...")
 
-        if user_input:
+        if user_input and user_input != st.session_state.last_question:
+
+            st.session_state.last_question = user_input
 
             q = user_input.lower()
             result_parts = []
@@ -158,12 +158,10 @@ if uploaded_file or use_sample:
                 data = df
 
             # -------- CHART --------
-            if any(x in q for x in ["chart","graph","plot","visualize"]):
+            if any(x in q for x in ["chart","plot","graph","visualize"]):
                 if len(data) > 0:
                     chart_data = data
-                    result_parts.append("Chart generated below")
-                else:
-                    result_parts.append("No data available")
+                    result_parts.append("Chart displayed below")
 
             # -------- CALCULATIONS --------
             if "max profit" in q:
@@ -182,22 +180,20 @@ if uploaded_file or use_sample:
 
             if "top 3" in q:
                 top3 = data.nlargest(3,"profit")
-                formatted = "\n".join(
+                result_parts.append("\n".join(
                     [f"{row['date'].date()} → ${row['profit']}" for _, row in top3.iterrows()]
-                )
-                result_parts.append(f"Top 3 days:\n{formatted}")
+                ))
 
-            # -------- INSIGHT DETECTION --------
+            # -------- INSIGHT --------
             if any(x in q for x in ["how","why","trend","explain","performance"]):
                 need_ai = True
 
-            # -------- AI INSIGHTS --------
             if need_ai:
                 prompt = f"""
-                Give business insights only.
+                Give business insights only. No calculations.
 
                 Data:
-                {data.head(30).to_string()}
+                {data.head(10).to_string()}
 
                 Question:
                 {user_input}
@@ -206,15 +202,15 @@ if uploaded_file or use_sample:
                 try:
                     response = client.chat.completions.create(
                         model="llama-3.1-8b-instant",
-                        messages=[{"role":"user","content":prompt}]
+                        messages=[{"role":"user","content":prompt}],
+                        temperature=0.3
                     )
                     result_parts.append(response.choices[0].message.content)
                 except:
                     result_parts.append("AI unavailable")
 
-            # -------- FINAL RESULT --------
             if not result_parts:
-                result_parts.append("I couldn't understand the query clearly.")
+                result_parts.append("Please rephrase your question.")
 
             final_result = "\n\n".join(result_parts)
 
@@ -224,7 +220,7 @@ if uploaded_file or use_sample:
             if chart_data is not None:
                 st.session_state.last_chart = chart_data
 
-        # -------- RENDER CHART --------
+        # -------- CHART DISPLAY --------
         if st.session_state.last_chart is not None:
             st.markdown("### 📊 Chart")
             st.line_chart(
