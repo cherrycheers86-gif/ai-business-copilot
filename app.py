@@ -16,6 +16,9 @@ if "user" not in st.session_state:
 if "history" not in st.session_state:
     st.session_state.history = []
 
+if "quick_q" not in st.session_state:
+    st.session_state.quick_q = ""
+
 # ---------------- AUTH ----------------
 if st.session_state.page == "auth":
 
@@ -91,9 +94,9 @@ if uploaded_file or use_sample:
 
     if use_sample:
         df = pd.DataFrame({
-            "date": pd.date_range("2026-01-01", periods=20),
-            "revenue": [1000 + i*50 for i in range(20)],
-            "cost": [600 + i*30 for i in range(20)]
+            "date": pd.date_range("2026-01-01", periods=30),
+            "revenue": [1000 + i*50 for i in range(30)],
+            "cost": [600 + i*30 for i in range(30)]
         })
     else:
         df = pd.read_csv(uploaded_file)
@@ -162,7 +165,44 @@ if uploaded_file or use_sample:
 
         st.subheader("🤖 AI Assistant")
 
-        # 🔥 Chat history FIRST
+        # ---------------- AUTO INSIGHTS ----------------
+        st.markdown("### 📊 Auto Insights")
+
+        best_day = df.loc[df["profit"].idxmax()]
+        worst_day = df.loc[df["profit"].idxmin()]
+
+        st.success(f"🏆 Best Day: {best_day['date'].date()} (Profit: ${best_day['profit']:.2f})")
+        st.error(f"📉 Worst Day: {worst_day['date'].date()} (Profit: ${worst_day['profit']:.2f})")
+
+        avg_profit = df["profit"].mean()
+        st.info(f"📊 Average Profit: ${avg_profit:.2f}")
+
+        # ---------------- ALERTS ----------------
+        st.markdown("### 🚨 Alerts")
+
+        margin = (df["profit"].sum() / df["revenue"].sum()) * 100
+
+        if margin < 20:
+            st.warning("⚠️ Profit margin is low")
+
+        if df["cost"].mean() > df["revenue"].mean() * 0.7:
+            st.warning("⚠️ Expenses are high")
+
+        # ---------------- QUICK QUESTIONS ----------------
+        st.markdown("### 💡 Suggested Questions")
+
+        col1, col2, col3 = st.columns(3)
+
+        if col1.button("Best Day"):
+            st.session_state.quick_q = "What is my best day?"
+
+        if col2.button("Worst Day"):
+            st.session_state.quick_q = "What is my worst day?"
+
+        if col3.button("Improve Profit"):
+            st.session_state.quick_q = "How can I improve profit?"
+
+        # ---------------- CHAT HISTORY ----------------
         for role, msg in st.session_state.history:
             if role == "You":
                 st.markdown(f"**🧑 You:** {msg}")
@@ -171,21 +211,41 @@ if uploaded_file or use_sample:
 
         st.markdown("---")
 
-        # 🔥 FORM (fixes crash + keeps input stable)
+        # ---------------- CHAT INPUT ----------------
         with st.form("chat_form", clear_on_submit=True):
-            user_input = st.text_input("Type your question...")
+
+            user_input = st.text_input("Ask AI", value=st.session_state.quick_q)
             submitted = st.form_submit_button("Send")
 
             if submitted and user_input:
-                summary = df.describe().to_string()
 
-                prompt = f"""
-                Analyze this business data and give insights.
+                q = user_input.lower()
 
-                {summary}
+                # ---------------- SMART LOGIC ----------------
+                if "best day" in q:
+                    row = df.loc[df["profit"].idxmax()]
+                    result = f"Best day is {row['date'].date()} with profit {row['profit']:.2f}"
 
-                Question: {user_input}
-                """
+                elif "worst day" in q:
+                    row = df.loc[df["profit"].idxmin()]
+                    result = f"Worst day is {row['date'].date()} with profit {row['profit']:.2f}"
+
+                elif "improve" in q:
+                    result = "Reduce costs, optimize pricing, and focus on high-margin days."
+
+                else:
+                    result = None
+
+                # ---------------- AI RESPONSE ----------------
+                if result:
+                    prompt = f"Explain this clearly: {result}"
+                else:
+                    prompt = f"""
+                    Analyze this business data:
+                    {df.head(20).to_string()}
+
+                    Question: {user_input}
+                    """
 
                 try:
                     response = client.chat.completions.create(
@@ -198,6 +258,7 @@ if uploaded_file or use_sample:
 
                 st.session_state.history.append(("You", user_input))
                 st.session_state.history.append(("AI", reply))
+                st.session_state.quick_q = ""
 
                 st.rerun()
 
