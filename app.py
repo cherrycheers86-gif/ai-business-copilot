@@ -88,9 +88,8 @@ if uploaded_file or use_sample:
     else:
         df = pd.read_csv(uploaded_file)
 
-    required_cols = ["date", "revenue", "cost"]
-
-    if not all(col in df.columns for col in required_cols):
+    # Validate
+    if not all(col in df.columns for col in ["date", "revenue", "cost"]):
         st.error("❌ CSV must contain: date, revenue, cost")
         st.stop()
 
@@ -108,7 +107,6 @@ if uploaded_file or use_sample:
 
     # ---------------- FILTER ----------------
     st.sidebar.subheader("📅 Filter")
-
     start = st.sidebar.date_input("Start", df["date"].min().date())
     end = st.sidebar.date_input("End", df["date"].max().date())
 
@@ -123,7 +121,6 @@ if uploaded_file or use_sample:
 
     # ---------------- DASHBOARD ----------------
     with tab1:
-
         total_sales = df["revenue"].sum()
         total_expenses = df["cost"].sum()
         total_profit = df["profit"].sum()
@@ -168,55 +165,37 @@ if uploaded_file or use_sample:
                 q = user_input.lower()
                 result = None
 
-                # -------- STRUCTURED LOGIC --------
-                if "maximum profit" in q:
+                # ---------------- INTENT DETECTION ----------------
+                if any(x in q for x in ["max", "maximum", "highest"]):
                     row = df.loc[df["profit"].idxmax()]
                     result = f"Maximum profit is {row['profit']:.2f} on {row['date'].date()}"
 
-                elif "lowest profit" in q:
+                elif any(x in q for x in ["min", "minimum", "lowest"]):
                     row = df.loc[df["profit"].idxmin()]
                     result = f"Lowest profit is {row['profit']:.2f} on {row['date'].date()}"
 
                 elif "total sales" in q:
                     result = f"Total sales is {df['revenue'].sum():.2f}"
 
-                elif "profit margin" in q:
-                    margin = (df["profit"].sum() / df["revenue"].sum()) * 100
-                    result = f"Profit margin is {margin:.2f}%"
+                elif "average" in q:
+                    result = f"Average profit is {df['profit'].mean():.2f}"
 
-                elif "january" in q:
-                    jan = df[df["date"].dt.month == 1]
-                    if "maximum profit" in q:
-                        row = jan.loc[jan["profit"].idxmax()]
-                        result = f"Max profit in January is {row['profit']:.2f} on {row['date'].date()}"
-                    elif "lowest profit" in q:
-                        row = jan.loc[jan["profit"].idxmin()]
-                        result = f"Lowest profit in January is {row['profit']:.2f} on {row['date'].date()}"
+                # ---------------- CHART HANDLING ----------------
+                elif any(x in q for x in ["chart", "plot", "graph"]):
+                    st.line_chart(df.set_index("date")[["revenue", "cost", "profit"]])
+                    result = "Here is your chart."
 
-                # -------- CHART HANDLING --------
-                if "chart" in q:
-                    if "january" in q:
-                        jan = df[df["date"].dt.month == 1]
-                        st.line_chart(jan.set_index("date")[["revenue", "cost", "profit"]])
-                        result = "Here is the January chart."
-                    elif "sales vs expenses" in q:
-                        st.line_chart(df.set_index("date")[["revenue", "cost"]])
-                        result = "Here is the sales vs expenses chart."
-                    else:
-                        st.line_chart(df.set_index("date")[["revenue", "cost", "profit"]])
-                        result = "Here is the chart."
-
-                # -------- AI FALLBACK --------
+                # ---------------- AI FALLBACK ----------------
                 if result:
-                    prompt = f"Explain briefly: {result}"
+                    prompt = f"Explain this clearly and briefly: {result}"
                 else:
                     prompt = f"""
                     You are a business analyst.
 
                     RULES:
-                    - Do NOT write code
-                    - Give direct insights
-                    - Be concise
+                    - DO NOT write code
+                    - DO NOT explain steps
+                    - Give insights only
 
                     DATA:
                     {df.head(30).to_string()}
