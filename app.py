@@ -16,9 +16,6 @@ if "user" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-if "chart_data" not in st.session_state:
-    st.session_state.chart_data = None
-
 # ---------------- AUTH ----------------
 if st.session_state.page == "auth":
 
@@ -64,7 +61,6 @@ st.success(f"Welcome {st.session_state.user['name']} 👋")
 if st.sidebar.button("Logout"):
     st.session_state.page = "auth"
     st.session_state.messages = []
-    st.session_state.chart_data = None
     st.rerun()
 
 uploaded_file = st.sidebar.file_uploader("Upload CSV", type=["csv"])
@@ -82,7 +78,6 @@ if uploaded_file or use_sample:
     else:
         df = pd.read_csv(uploaded_file)
 
-    # -------- CLEAN --------
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df["revenue"] = pd.to_numeric(df["revenue"], errors="coerce")
     df["cost"] = pd.to_numeric(df["cost"], errors="coerce")
@@ -94,7 +89,6 @@ if uploaded_file or use_sample:
 
     df["profit"] = df["revenue"] - df["cost"]
 
-    # ---------------- TABS ----------------
     tab1, tab2, tab3 = st.tabs(["📊 Dashboard","📈 Trends","🤖 AI"])
 
     # ---------------- DASHBOARD ----------------
@@ -112,14 +106,24 @@ if uploaded_file or use_sample:
 
         st.subheader("🤖 AI Assistant")
 
-        # -------- INPUT FIRST (IMPORTANT FIX) --------
+        # -------- DISPLAY CHAT --------
+        for msg in st.session_state.messages:
+
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+
+                # 🔥 SHOW CHART INLINE (IMPORTANT FIX)
+                if "chart" in msg:
+                    st.line_chart(
+                        msg["chart"].set_index("date")[["revenue","cost","profit"]]
+                    )
+
+        # -------- INPUT (STAYS AT BOTTOM NATURALLY) --------
         user_input = st.chat_input("Ask anything about your data...")
 
         if user_input:
 
             q = user_input.lower()
-            response = ""
-            chart_data = None
 
             # -------- MONTH FILTER --------
             if "january" in q:
@@ -129,45 +133,40 @@ if uploaded_file or use_sample:
             else:
                 data = df
 
+            response = ""
+            message_obj = {"role": "assistant", "content": ""}
+
             # -------- CHART --------
-            if any(x in q for x in ["chart", "plot", "graph"]):
-                chart_data = data
+            if any(x in q for x in ["chart", "graph", "plot"]):
                 response = "Here is your chart 👇"
+                message_obj["chart"] = data
 
-            # -------- STRONG CALCULATIONS --------
-            elif "max" in q and ("sale" in q or "revenue" in q):
-                row = data.loc[data["revenue"].idxmax()]
-                response = f"Max revenue: {row['revenue']} on {row['date'].date()}"
-
+            # -------- NUMERIC --------
             elif "max profit" in q:
                 row = data.loc[data["profit"].idxmax()]
                 response = f"Max profit: {row['profit']} on {row['date'].date()}"
 
-            elif "lowest profit" in q or "min profit" in q:
-                row = data.loc[data["profit"].idxmin()]
-                response = f"Lowest profit: {row['profit']} on {row['date'].date()}"
+            elif "max revenue" in q:
+                row = data.loc[data["revenue"].idxmax()]
+                response = f"Max revenue: {row['revenue']} on {row['date'].date()}"
+
+            elif "total revenue" in q:
+                response = f"Total revenue: ${data['revenue'].sum():.2f}"
 
             elif "total profit" in q:
                 response = f"Total profit: ${data['profit'].sum():.2f}"
 
-            elif "total revenue" in q or "total sales" in q:
-                response = f"Total revenue: ${data['revenue'].sum():.2f}"
-
             elif "average profit" in q:
                 response = f"Average profit: ${data['profit'].mean():.2f}"
 
-            elif "average revenue" in q:
-                response = f"Average revenue: ${data['revenue'].mean():.2f}"
+            elif "median profit" in q:
+                response = f"Median profit: ${data['profit'].median():.2f}"
 
             # -------- AI INSIGHTS --------
             else:
                 prompt = f"""
-                You are a business analyst.
-
-                RULES:
-                - Do NOT calculate numbers
-                - Do NOT generate code
-                - Give clear business insights
+                Give business insights only.
+                Do not calculate numbers.
 
                 Data:
                 {data.head(10).to_string()}
@@ -184,25 +183,15 @@ if uploaded_file or use_sample:
                     )
                     response = ai.choices[0].message.content
                 except:
-                    response = "AI unavailable. Try again."
+                    response = "AI unavailable"
 
-            # -------- SAVE ONCE (CRITICAL FIX) --------
+            message_obj["content"] = response
+
+            # -------- SAVE CHAT --------
             st.session_state.messages.append({"role": "user", "content": user_input})
-            st.session_state.messages.append({"role": "assistant", "content": response})
+            st.session_state.messages.append(message_obj)
 
-            if chart_data is not None:
-                st.session_state.chart_data = chart_data
-
-        # -------- DISPLAY CHAT (ONLY ONCE) --------
-        for msg in st.session_state.messages:
-            with st.chat_message(msg["role"]):
-                st.markdown(msg["content"])
-
-        # -------- DISPLAY CHART --------
-        if st.session_state.chart_data is not None:
-            st.line_chart(
-                st.session_state.chart_data.set_index("date")[["revenue","cost","profit"]]
-            )
+            st.rerun()
 
 else:
     st.info("Upload data to start")
