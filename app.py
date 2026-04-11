@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 from groq import Groq
-import io
 
 # ---------------- CONFIG ----------------
 st.set_page_config(page_title="AI Business Copilot", layout="wide")
@@ -76,7 +75,6 @@ if uploaded_file or use_sample:
     st.subheader("🔧 Map Your Data")
 
     cols = df.columns
-
     sales_col = st.selectbox("Select Sales Column", cols)
     expense_col = st.selectbox("Select Expense Column", cols)
     date_col = st.selectbox("Select Date Column", cols)
@@ -84,23 +82,42 @@ if uploaded_file or use_sample:
     # Map columns
     df["Sales"] = df[sales_col]
     df["Expenses"] = df[expense_col]
-    df["Date"] = pd.to_datetime(df[date_col], errors="coerce")
+    df["Date"] = df[date_col]
 
-    # ---------------- SAFE NUMERIC ----------------
+    # ---------------- ROBUST CLEANING ----------------
+    df["Sales"] = (
+        df["Sales"].astype(str)
+        .str.replace("$", "", regex=False)
+        .str.replace(",", "", regex=False)
+    )
+
+    df["Expenses"] = (
+        df["Expenses"].astype(str)
+        .str.replace("$", "", regex=False)
+        .str.replace(",", "", regex=False)
+    )
+
     df["Sales"] = pd.to_numeric(df["Sales"], errors="coerce")
     df["Expenses"] = pd.to_numeric(df["Expenses"], errors="coerce")
 
-    # Drop bad rows
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+
+    # Debug info
+    st.subheader("🔍 Data Check")
+    st.write("Null values:")
+    st.write(df[["Sales", "Expenses", "Date"]].isna().sum())
+
+    # Drop invalid
     df = df.dropna(subset=["Sales", "Expenses", "Date"])
 
     if len(df) == 0:
-        st.error("❌ No valid data after cleaning. Please check your file.")
+        st.error("❌ No valid data after cleaning. Please check your mapping or file.")
         st.stop()
 
     # Profit
     df["Profit"] = df["Sales"] - df["Expenses"]
 
-    # ---------------- SAFE DATE FILTER ----------------
+    # ---------------- FILTER ----------------
     st.sidebar.subheader("📅 Filter")
 
     min_date = df["Date"].min()
@@ -113,11 +130,11 @@ if uploaded_file or use_sample:
             (df["Date"].dt.date <= end)]
 
     if len(df) == 0:
-        st.warning("⚠️ No data in selected date range")
+        st.warning("⚠️ No data in selected range")
         st.stop()
 
     # ---------------- TABS ----------------
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 Dashboard", "📈 Trends", "🤖 AI", "📥 Report"])
+    tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "📈 Trends", "🤖 AI"])
 
     # ---------------- DASHBOARD ----------------
     with tab1:
@@ -131,7 +148,7 @@ if uploaded_file or use_sample:
         c2.metric("Expenses", f"${total_expenses:.2f}")
         c3.metric("Profit", f"${total_profit:.2f}")
 
-        # ---------------- INDUSTRY KPIs ----------------
+        # ---------------- KPI ENGINE ----------------
         st.subheader("📊 Industry KPIs")
 
         if industry == "Restaurant":
@@ -139,26 +156,23 @@ if uploaded_file or use_sample:
             st.metric("🍔 Food Cost %", f"{food_cost:.2f}%")
 
             if food_cost > 30:
-                st.error("Food cost too high (benchmark: 30%)")
+                st.error("Food cost too high (>30%)")
             else:
-                st.success("Food cost healthy")
+                st.success("Healthy food cost")
 
         elif industry == "Retail":
             margin = (total_profit / total_sales) * 100 if total_sales else 0
             st.metric("🛒 Profit Margin", f"{margin:.2f}%")
 
             if margin < 20:
-                st.warning("Low margin — improve pricing")
+                st.warning("Low margin")
 
         elif industry == "Gas Station":
             margin = (total_profit / total_sales) * 100 if total_sales else 0
             st.metric("⛽ Margin %", f"{margin:.2f}%")
 
             if margin < 10:
-                st.warning("Very low margin — rely on store sales")
-
-        else:
-            st.metric("📊 Profit", f"${total_profit:.2f}")
+                st.warning("Very low margin")
 
         st.dataframe(df)
 
@@ -169,7 +183,7 @@ if uploaded_file or use_sample:
     # ---------------- AI ----------------
     with tab3:
 
-        user_input = st.text_input("Ask AI")
+        user_input = st.text_input("Ask a business question")
 
         if user_input:
             summary = df.describe().to_string()
@@ -191,11 +205,9 @@ if uploaded_file or use_sample:
                     model="llama-3.1-8b-instant",
                     messages=[{"role": "user", "content": prompt}]
                 )
-
                 reply = response.choices[0].message.content
-
-            except Exception as e:
-                reply = "⚠️ AI temporarily unavailable. Please try again."
+            except:
+                reply = "AI is temporarily unavailable."
 
             st.session_state.history.append(("You", user_input))
             st.session_state.history.append(("AI", reply))
@@ -203,20 +215,5 @@ if uploaded_file or use_sample:
         for role, msg in st.session_state.history:
             st.write(f"**{role}:** {msg}")
 
-    # ---------------- REPORT ----------------
-    with tab4:
-
-        report = f"""
-Customer: {customer['name']}
-Business: {customer['business']}
-Industry: {industry}
-
-Sales: {total_sales}
-Expenses: {total_expenses}
-Profit: {total_profit}
-"""
-
-        st.download_button("Download Report", report)
-
 else:
-    st.info("Upload data or use sample")
+    st.info("Upload a CSV or use sample data")
