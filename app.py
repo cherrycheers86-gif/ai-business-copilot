@@ -2,24 +2,75 @@ import streamlit as st
 import pandas as pd
 from groq import Groq
 
+# ---------------- CONFIG ----------------
 st.set_page_config(page_title="AI Business Copilot", layout="wide")
-
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
 # ---------------- SESSION ----------------
+if "page" not in st.session_state:
+    st.session_state.page = "auth"
+
+if "user" not in st.session_state:
+    st.session_state.user = None
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
 if "chart_data" not in st.session_state:
     st.session_state.chart_data = None
 
-# ---------------- HEADER ----------------
-st.title("🚀 AI Business Copilot")
+# ---------------- AUTH ----------------
+if st.session_state.page == "auth":
 
-# ---------------- DATA ----------------
+    st.title("🔐 Login / Signup")
+
+    mode = st.radio("Select", ["Login", "Signup"])
+    email = st.text_input("Email")
+    password = st.text_input("Password", type="password")
+
+    if mode == "Signup":
+        name = st.text_input("Name")
+        if st.button("Create Account"):
+            st.session_state.user = {"name": name}
+            st.session_state.page = "onboarding"
+            st.rerun()
+
+    else:
+        if st.button("Login"):
+            st.session_state.user = {"name": "User"}
+            st.session_state.page = "app"
+            st.rerun()
+
+    st.stop()
+
+# ---------------- ONBOARDING ----------------
+if st.session_state.page == "onboarding":
+
+    st.title("🏢 Setup Business")
+
+    industry = st.selectbox("Industry", ["Restaurant", "Retail", "Gas Station", "Other"])
+    size = st.selectbox("Size", ["Small", "Medium", "Large"])
+
+    if st.button("Continue"):
+        st.session_state.page = "app"
+        st.rerun()
+
+    st.stop()
+
+# ---------------- MAIN ----------------
+st.title("🚀 AI Business Copilot")
+st.success(f"Welcome {st.session_state.user['name']} 👋")
+
+if st.sidebar.button("Logout"):
+    st.session_state.page = "auth"
+    st.session_state.messages = []
+    st.session_state.chart_data = None
+    st.rerun()
+
 uploaded_file = st.sidebar.file_uploader("Upload CSV", type=["csv"])
 use_sample = st.sidebar.button("Use Sample Data")
 
+# ---------------- DATA ----------------
 if uploaded_file or use_sample:
 
     if use_sample:
@@ -36,96 +87,111 @@ if uploaded_file or use_sample:
     df["cost"] = pd.to_numeric(df["cost"], errors="coerce")
     df = df.dropna()
 
+    if len(df) == 0:
+        st.error("Invalid data")
+        st.stop()
+
     df["profit"] = df["revenue"] - df["cost"]
 
-    # ---------------- CHAT DISPLAY ----------------
-    st.subheader("🤖 AI Assistant")
+    # ---------------- TABS ----------------
+    tab1, tab2, tab3 = st.tabs(["📊 Dashboard","📈 Trends","🤖 AI"])
 
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
+    # ---------------- DASHBOARD ----------------
+    with tab1:
+        st.metric("Sales", f"${df['revenue'].sum():.2f}")
+        st.metric("Profit", f"${df['profit'].sum():.2f}")
+        st.dataframe(df)
 
-    # ---------------- INPUT ----------------
-    user_input = st.chat_input("Ask your business question...")
+    # ---------------- TRENDS ----------------
+    with tab2:
+        st.line_chart(df.set_index("date")[["revenue","cost","profit"]])
 
-    if user_input:
+    # ---------------- AI ----------------
+    with tab3:
 
-        # SHOW USER MESSAGE
-        st.session_state.messages.append({"role": "user", "content": user_input})
+        st.subheader("🤖 AI Assistant")
 
-        q = user_input.lower()
-        response = ""
-        chart_data = None
+        # -------- SHOW CHAT --------
+        for msg in st.session_state.messages:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
 
-        # -------- MONTH FILTER --------
-        if "january" in q:
-            data = df[df["date"].dt.month == 1]
-        elif "february" in q or "feb" in q:
-            data = df[df["date"].dt.month == 2]
-        else:
-            data = df
+        # -------- INPUT --------
+        user_input = st.chat_input("Ask your business question...")
 
-        # -------- CHART --------
-        if any(x in q for x in ["chart","plot","graph"]):
-            chart_data = data
-            response = "Here is your chart 👇"
+        if user_input:
 
-        # -------- CALCULATIONS --------
-        elif "profit" in q:
-            response = f"Total profit: ${data['profit'].sum():.2f}"
+            # Show user message
+            st.session_state.messages.append({"role": "user", "content": user_input})
 
-        elif "revenue" in q or "sales" in q:
-            response = f"Total revenue: ${data['revenue'].sum():.2f}"
+            q = user_input.lower()
+            response = ""
+            chart_data = None
 
-        elif "max profit" in q:
-            row = data.loc[data["profit"].idxmax()]
-            response = f"Max profit: {row['profit']} on {row['date'].date()}"
+            # -------- MONTH FILTER --------
+            if "january" in q:
+                data = df[df["date"].dt.month == 1]
+            elif "february" in q or "feb" in q:
+                data = df[df["date"].dt.month == 2]
+            else:
+                data = df
 
-        elif "lowest profit" in q:
-            row = data.loc[data["profit"].idxmin()]
-            response = f"Lowest profit: {row['profit']} on {row['date'].date()}"
+            # -------- CHART --------
+            if any(x in q for x in ["chart","plot","graph"]):
+                chart_data = data
+                response = "Here is your chart 👇"
 
-        # -------- AI INSIGHTS --------
-        else:
-            prompt = f"""
-            You are a business analyst.
+            # -------- CALCULATIONS --------
+            elif "profit" in q:
+                response = f"Total profit: ${data['profit'].sum():.2f}"
 
-            DO NOT calculate numbers.
-            DO NOT generate code.
+            elif "revenue" in q or "sales" in q:
+                response = f"Total revenue: ${data['revenue'].sum():.2f}"
 
-            Explain insights from this data:
+            elif "max profit" in q:
+                row = data.loc[data["profit"].idxmax()]
+                response = f"Max profit: {row['profit']} on {row['date'].date()}"
 
-            {data.head(10).to_string()}
+            elif "lowest profit" in q:
+                row = data.loc[data["profit"].idxmin()]
+                response = f"Lowest profit: {row['profit']} on {row['date'].date()}"
 
-            Question: {user_input}
-            """
+            # -------- AI INSIGHTS --------
+            else:
+                prompt = f"""
+                You are a business analyst.
 
-            try:
-                ai = client.chat.completions.create(
-                    model="llama-3.1-8b-instant",
-                    messages=[{"role":"user","content":prompt}],
-                    temperature=0.3
-                )
-                response = ai.choices[0].message.content
-            except:
-                response = "AI unavailable"
+                DO NOT calculate numbers.
+                DO NOT generate code.
 
-        # SAVE AI MESSAGE
-        st.session_state.messages.append({"role": "assistant", "content": response})
+                Give insights based on data:
 
-        # SAVE CHART
-        if chart_data is not None:
-            st.session_state.chart_data = chart_data
+                {data.head(10).to_string()}
 
-        # DISPLAY AI MESSAGE IMMEDIATELY
-        with st.chat_message("assistant"):
-            st.markdown(response)
+                Question: {user_input}
+                """
 
-    # ---------------- SHOW CHART ----------------
-    if st.session_state.chart_data is not None:
-        st.line_chart(
-            st.session_state.chart_data.set_index("date")[["revenue","cost","profit"]]
-        )
+                try:
+                    ai = client.chat.completions.create(
+                        model="llama-3.1-8b-instant",
+                        messages=[{"role":"user","content":prompt}],
+                        temperature=0.3
+                    )
+                    response = ai.choices[0].message.content
+                except:
+                    response = "AI unavailable"
+
+            # Save AI message
+            st.session_state.messages.append({"role": "assistant", "content": response})
+
+            if chart_data is not None:
+                st.session_state.chart_data = chart_data
+
+        # -------- SHOW CHART --------
+        if st.session_state.chart_data is not None:
+            st.line_chart(
+                st.session_state.chart_data.set_index("date")[["revenue","cost","profit"]]
+            )
 
 else:
     st.info("Upload data to start")
