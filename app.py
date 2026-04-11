@@ -82,7 +82,7 @@ if uploaded_file or use_sample:
     else:
         df = pd.read_csv(uploaded_file)
 
-    # Clean data
+    # -------- CLEAN --------
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df["revenue"] = pd.to_numeric(df["revenue"], errors="coerce")
     df["cost"] = pd.to_numeric(df["cost"], errors="coerce")
@@ -112,81 +112,93 @@ if uploaded_file or use_sample:
 
         st.subheader("🤖 AI Assistant")
 
-        # -------- DISPLAY CHAT --------
-        for msg in st.session_state.messages:
-            with st.chat_message(msg["role"]):
-                st.markdown(msg["content"])
-
-        # -------- INPUT --------
+        # -------- INPUT FIRST (IMPORTANT FIX) --------
         user_input = st.chat_input("Ask anything about your data...")
 
         if user_input:
-
-            st.session_state.messages.append({"role": "user", "content": user_input})
 
             q = user_input.lower()
             response = ""
             chart_data = None
 
-            # -------- SIMPLE RULES (FAST) --------
-            if "chart" in q:
-                chart_data = df
+            # -------- MONTH FILTER --------
+            if "january" in q:
+                data = df[df["date"].dt.month == 1]
+            elif "february" in q or "feb" in q:
+                data = df[df["date"].dt.month == 2]
+            else:
+                data = df
+
+            # -------- CHART --------
+            if any(x in q for x in ["chart", "plot", "graph"]):
+                chart_data = data
                 response = "Here is your chart 👇"
 
+            # -------- STRONG CALCULATIONS --------
+            elif "max" in q and ("sale" in q or "revenue" in q):
+                row = data.loc[data["revenue"].idxmax()]
+                response = f"Max revenue: {row['revenue']} on {row['date'].date()}"
+
+            elif "max profit" in q:
+                row = data.loc[data["profit"].idxmax()]
+                response = f"Max profit: {row['profit']} on {row['date'].date()}"
+
+            elif "lowest profit" in q or "min profit" in q:
+                row = data.loc[data["profit"].idxmin()]
+                response = f"Lowest profit: {row['profit']} on {row['date'].date()}"
+
             elif "total profit" in q:
-                response = f"${df['profit'].sum():.2f}"
+                response = f"Total profit: ${data['profit'].sum():.2f}"
 
-            elif "total sales" in q or "total revenue" in q:
-                response = f"${df['revenue'].sum():.2f}"
+            elif "total revenue" in q or "total sales" in q:
+                response = f"Total revenue: ${data['revenue'].sum():.2f}"
 
-            # -------- AI → CODE ENGINE --------
+            elif "average profit" in q:
+                response = f"Average profit: ${data['profit'].mean():.2f}"
+
+            elif "average revenue" in q:
+                response = f"Average revenue: ${data['revenue'].mean():.2f}"
+
+            # -------- AI INSIGHTS --------
             else:
-
-                code_prompt = f"""
-                Convert the question into pandas code.
+                prompt = f"""
+                You are a business analyst.
 
                 RULES:
-                - Use only df
-                - No imports
-                - Return one line of code
-                - Must return value
+                - Do NOT calculate numbers
+                - Do NOT generate code
+                - Give clear business insights
 
-                Columns: {list(df.columns)}
+                Data:
+                {data.head(10).to_string()}
 
-                Question: {user_input}
+                Question:
+                {user_input}
                 """
 
                 try:
                     ai = client.chat.completions.create(
                         model="llama-3.1-8b-instant",
-                        messages=[{"role": "user", "content": code_prompt}],
-                        temperature=0
+                        messages=[{"role":"user","content":prompt}],
+                        temperature=0.3
                     )
-
-                    code = ai.choices[0].message.content.strip()
-
-                    # -------- SECURITY --------
-                    unsafe = ["import", "os", "sys", "open", "exec", "__"]
-
-                    if any(x in code.lower() for x in unsafe):
-                        response = "Unsafe query blocked."
-                    else:
-                        try:
-                            result = eval(code, {"df": df})
-                            response = f"Result:\n{result}"
-                        except:
-                            response = "Could not compute."
-
+                    response = ai.choices[0].message.content
                 except:
-                    response = "AI unavailable"
+                    response = "AI unavailable. Try again."
 
-            # -------- SAVE --------
+            # -------- SAVE ONCE (CRITICAL FIX) --------
+            st.session_state.messages.append({"role": "user", "content": user_input})
             st.session_state.messages.append({"role": "assistant", "content": response})
 
             if chart_data is not None:
                 st.session_state.chart_data = chart_data
 
-        # -------- SHOW CHART --------
+        # -------- DISPLAY CHAT (ONLY ONCE) --------
+        for msg in st.session_state.messages:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+
+        # -------- DISPLAY CHART --------
         if st.session_state.chart_data is not None:
             st.line_chart(
                 st.session_state.chart_data.set_index("date")[["revenue","cost","profit"]]
