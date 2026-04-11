@@ -101,7 +101,7 @@ if uploaded_file or use_sample:
     else:
         df = pd.read_csv(uploaded_file)
 
-    # ---------------- VALIDATION ----------------
+    # Validate
     required_cols = ["date", "revenue", "cost"]
 
     if not all(col in df.columns for col in required_cols):
@@ -123,11 +123,8 @@ if uploaded_file or use_sample:
     # ---------------- FILTER ----------------
     st.sidebar.subheader("📅 Filter")
 
-    min_date = df["date"].min()
-    max_date = df["date"].max()
-
-    start = st.sidebar.date_input("Start", min_date.date())
-    end = st.sidebar.date_input("End", max_date.date())
+    start = st.sidebar.date_input("Start", df["date"].min().date())
+    end = st.sidebar.date_input("End", df["date"].max().date())
 
     df = df[(df["date"].dt.date >= start) &
             (df["date"].dt.date <= end)]
@@ -137,15 +134,13 @@ if uploaded_file or use_sample:
         st.stop()
 
     # ---------------- TABS ----------------
-    tab1, tab2, tab3 = st.tabs(["📊 Dashboard","📈 Trends","🤖 AI"])
+    tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "📈 Trends", "🤖 AI"])
 
     # ---------------- DASHBOARD ----------------
     with tab1:
-
         total_sales = df["revenue"].sum()
         total_expenses = df["cost"].sum()
         total_profit = df["profit"].sum()
-
         margin = (total_profit / total_sales) * 100 if total_sales else 0
 
         c1,c2,c3,c4 = st.columns(4)
@@ -165,86 +160,66 @@ if uploaded_file or use_sample:
 
         st.subheader("🤖 AI Assistant")
 
-        # ---------------- AUTO INSIGHTS ----------------
-        st.markdown("### 📊 Auto Insights")
+        # Auto insights
+        best = df.loc[df["profit"].idxmax()]
+        worst = df.loc[df["profit"].idxmin()]
 
-        best_day = df.loc[df["profit"].idxmax()]
-        worst_day = df.loc[df["profit"].idxmin()]
+        st.success(f"Best Day: {best['date'].date()} (${best['profit']:.2f})")
+        st.error(f"Worst Day: {worst['date'].date()} (${worst['profit']:.2f})")
 
-        st.success(f"🏆 Best Day: {best_day['date'].date()} (Profit: ${best_day['profit']:.2f})")
-        st.error(f"📉 Worst Day: {worst_day['date'].date()} (Profit: ${worst_day['profit']:.2f})")
-
-        avg_profit = df["profit"].mean()
-        st.info(f"📊 Average Profit: ${avg_profit:.2f}")
-
-        # ---------------- ALERTS ----------------
-        st.markdown("### 🚨 Alerts")
-
-        margin = (df["profit"].sum() / df["revenue"].sum()) * 100
-
-        if margin < 20:
-            st.warning("⚠️ Profit margin is low")
-
-        if df["cost"].mean() > df["revenue"].mean() * 0.7:
-            st.warning("⚠️ Expenses are high")
-
-        # ---------------- QUICK QUESTIONS ----------------
-        st.markdown("### 💡 Suggested Questions")
-
-        col1, col2, col3 = st.columns(3)
-
-        if col1.button("Best Day"):
-            st.session_state.quick_q = "What is my best day?"
-
-        if col2.button("Worst Day"):
-            st.session_state.quick_q = "What is my worst day?"
-
-        if col3.button("Improve Profit"):
-            st.session_state.quick_q = "How can I improve profit?"
-
-        # ---------------- CHAT HISTORY ----------------
+        # Chat history
         for role, msg in st.session_state.history:
-            if role == "You":
-                st.markdown(f"**🧑 You:** {msg}")
-            else:
-                st.markdown(f"**🤖 AI:** {msg}")
+            st.markdown(f"**{role}:** {msg}")
 
         st.markdown("---")
 
-        # ---------------- CHAT INPUT ----------------
         with st.form("chat_form", clear_on_submit=True):
-
-            user_input = st.text_input("Ask AI", value=st.session_state.quick_q)
+            user_input = st.text_input("Ask a question")
             submitted = st.form_submit_button("Send")
 
             if submitted and user_input:
 
                 q = user_input.lower()
+                result = None
 
-                # ---------------- SMART LOGIC ----------------
-                if "best day" in q:
-                    row = df.loc[df["profit"].idxmax()]
-                    result = f"Best day is {row['date'].date()} with profit {row['profit']:.2f}"
+                # -------- ACCURATE PYTHON LOGIC --------
+                if "maximum profit" in q and "january" in q:
+                    jan = df[df["date"].dt.month == 1]
+                    row = jan.loc[jan["profit"].idxmax()]
+                    result = f"Maximum profit in January is {row['profit']:.2f} on {row['date'].date()}"
 
-                elif "worst day" in q:
-                    row = df.loc[df["profit"].idxmin()]
-                    result = f"Worst day is {row['date'].date()} with profit {row['profit']:.2f}"
+                elif "maximum sale" in q:
+                    row = df.loc[df["revenue"].idxmax()]
+                    result = f"Maximum sales is {row['revenue']:.2f} on {row['date'].date()}"
 
-                elif "improve" in q:
-                    result = "Reduce costs, optimize pricing, and focus on high-margin days."
+                elif "total sales" in q:
+                    result = f"Total sales is {df['revenue'].sum():.2f}"
 
-                else:
-                    result = None
+                elif "profit margin" in q:
+                    margin = (df["profit"].sum() / df["revenue"].sum()) * 100
+                    result = f"Profit margin is {margin:.2f}%"
 
-                # ---------------- AI RESPONSE ----------------
+                # -------- AI RESPONSE --------
                 if result:
-                    prompt = f"Explain this clearly: {result}"
+                    prompt = f"""
+                    Explain this clearly and briefly:
+
+                    {result}
+                    """
                 else:
                     prompt = f"""
-                    Analyze this business data:
+                    You are a business assistant.
+
+                    RULES:
+                    - DO NOT write code
+                    - Give direct answers
+                    - Be concise
+
+                    DATA:
                     {df.head(20).to_string()}
 
-                    Question: {user_input}
+                    QUESTION:
+                    {user_input}
                     """
 
                 try:
@@ -258,7 +233,6 @@ if uploaded_file or use_sample:
 
                 st.session_state.history.append(("You", user_input))
                 st.session_state.history.append(("AI", reply))
-                st.session_state.quick_q = ""
 
                 st.rerun()
 
