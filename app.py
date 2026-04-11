@@ -8,18 +8,47 @@ st.set_page_config(page_title="AI Business Copilot", layout="wide")
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
 st.title("🚀 AI Business Copilot")
-st.markdown("Advanced Business Analytics + AI Insights")
+st.markdown("Analyze your business data and get smart insights")
 
-# SIDEBAR
+# ---------------- SIDEBAR ----------------
 st.sidebar.header("⚙️ Controls")
 
 uploaded_file = st.sidebar.file_uploader("Upload CSV", type=["csv"])
 use_sample = st.sidebar.button("Use Sample Data")
 
+# 👤 CUSTOMER INFO
+st.sidebar.header("👤 Customer Info")
+
+customer_name = st.sidebar.text_input("Name")
+business_name = st.sidebar.text_input("Business Name")
+
+industry = st.sidebar.selectbox(
+    "Industry",
+    ["Restaurant", "Retail", "Gas Station", "Other"]
+)
+
+business_size = st.sidebar.selectbox(
+    "Business Size",
+    ["Small", "Medium", "Large"]
+)
+
+# Save session
+st.session_state.customer = {
+    "name": customer_name,
+    "business": business_name,
+    "industry": industry,
+    "size": business_size
+}
+
+# Welcome message
+if customer_name:
+    st.success(f"Welcome {customer_name}! 🚀")
+
+# Chat memory
 if "history" not in st.session_state:
     st.session_state.history = []
 
-# LOAD DATA
+# ---------------- LOAD DATA ----------------
 if uploaded_file or use_sample:
 
     if use_sample:
@@ -36,58 +65,65 @@ if uploaded_file or use_sample:
 
     df["Profit"] = df["Sales"] - df["Expenses"]
 
-    # FILTER
+    # ---------------- FILTER ----------------
     if "Date" in df.columns:
-        st.sidebar.subheader("📅 Date Filter")
+        st.sidebar.subheader("📅 Filter Data")
         start = st.sidebar.date_input("Start", df["Date"].min().date())
         end = st.sidebar.date_input("End", df["Date"].max().date())
-        df = df[(df["Date"].dt.date >= start) & (df["Date"].dt.date <= end)]
+
+        df = df[(df["Date"].dt.date >= start) & 
+                (df["Date"].dt.date <= end)]
 
     # VIEW
-    view = st.sidebar.selectbox("View", ["Daily", "Monthly"])
+    st.sidebar.subheader("📊 View")
+    view = st.sidebar.selectbox("View Type", ["Daily", "Monthly"])
+
     if "Date" in df.columns:
         df["Month"] = df["Date"].dt.to_period("M").astype(str)
         if view == "Monthly":
             df = df.groupby("Month").sum(numeric_only=True).reset_index()
 
     # SEARCH
-    search = st.sidebar.text_input("🔍 Search")
+    st.sidebar.subheader("🔍 Search")
+    search = st.sidebar.text_input("Search value")
+
     if search:
         df = df[df.astype(str).apply(lambda x: x.str.contains(search, case=False).any(), axis=1)]
 
     # SORT
+    st.sidebar.subheader("↕️ Sort")
     sort_col = st.sidebar.selectbox("Sort by", df.columns)
-    order = st.sidebar.radio("Order", ["Asc", "Desc"])
-    df = df.sort_values(by=sort_col, ascending=(order == "Asc"))
+    order = st.sidebar.radio("Order", ["Ascending", "Descending"])
 
-    # COLUMN SELECT
-    st.sidebar.subheader("📊 Select Columns")
-    selected_cols = st.sidebar.multiselect("Columns", df.columns, default=df.columns)
-    df = df[selected_cols]
+    df = df.sort_values(by=sort_col, ascending=(order == "Ascending"))
 
-    # TABS
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 Dashboard", "📈 Trends", "🤖 AI", "📥 Report"])
+    # ---------------- TABS ----------------
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Dashboard", "📈 Trends", "🤖 AI Chat", "📥 Report"])
 
-    # DASHBOARD
+    # ---------------- DASHBOARD ----------------
     with tab1:
+
+        st.subheader("👤 Customer Profile")
+        st.write(f"Name: {customer_name}")
+        st.write(f"Business: {business_name}")
+        st.write(f"Industry: {industry}")
+        st.write(f"Size: {business_size}")
+
+        st.subheader("📊 Business Overview")
+
         total_sales = df["Sales"].sum()
         total_expenses = df["Expenses"].sum()
         total_profit = df["Profit"].sum()
 
         c1, c2, c3 = st.columns(3)
-        c1.metric("Sales", f"${total_sales}")
-        c2.metric("Expenses", f"${total_expenses}")
-        c3.metric("Profit", f"${total_profit}")
+        c1.metric("💰 Sales", f"${total_sales}")
+        c2.metric("💸 Expenses", f"${total_expenses}")
+        c3.metric("📈 Profit", f"${total_profit}")
 
-        # Profit Margin
+        # Profit margin
         if total_sales > 0:
             margin = (total_profit / total_sales) * 100
-            st.metric("Profit Margin", f"{margin:.2f}%")
-
-        # Growth
-        if len(df) > 1:
-            growth = ((df["Sales"].iloc[-1] - df["Sales"].iloc[0]) / df["Sales"].iloc[0]) * 100
-            st.metric("Growth", f"{growth:.2f}%")
+            st.metric("📊 Profit Margin", f"{margin:.2f}%")
 
         st.divider()
 
@@ -97,11 +133,11 @@ if uploaded_file or use_sample:
             st.dataframe(df)
 
             if len(df) > 0:
-                st.success(f"Best Sales: {df['Sales'].max()}")
-                st.warning(f"Lowest Sales: {df['Sales'].min()}")
+                st.success(f"🏆 Best Sales: {df['Sales'].max()}")
+                st.warning(f"⚠️ Lowest Sales: {df['Sales'].min()}")
 
         with col2:
-            st.subheader("🚨 Alerts")
+            st.subheader("🚨 Issues")
 
             if total_profit < 0:
                 st.error("Loss detected")
@@ -116,32 +152,56 @@ if uploaded_file or use_sample:
             st.subheader("💡 Recommendations")
 
             if total_expenses > total_sales * 0.7:
-                st.write("- Reduce cost")
+                st.write("- Reduce costs")
 
             if total_profit > 0:
                 st.write("- Reinvest profits")
 
-    # TRENDS
+        # Industry insights
+        st.subheader("📊 Industry Insights")
+
+        if industry == "Restaurant":
+            st.info("Food cost should be < 30% of revenue")
+
+        elif industry == "Retail":
+            st.info("Focus on inventory turnover")
+
+        elif industry == "Gas Station":
+            st.info("Focus on store sales beyond fuel")
+
+    # ---------------- TRENDS ----------------
     with tab2:
+        st.subheader("📈 Trends")
         st.line_chart(df[["Sales", "Expenses", "Profit"]])
 
         # Moving average
         df["MA"] = df["Sales"].rolling(3).mean()
         st.line_chart(df[["Sales", "MA"]])
 
-    # AI
+    # ---------------- AI CHAT ----------------
     with tab3:
-        user_input = st.text_input("Ask business question")
+        st.subheader("🤖 Ask AI")
+
+        user_input = st.text_input("Ask a business question")
 
         if user_input:
             summary = df.describe().to_string()
 
             prompt = f"""
-            Analyze business data and give insights + suggestions.
+            You are a business expert.
 
+            Customer Info:
+            Name: {customer_name}
+            Business: {business_name}
+            Industry: {industry}
+            Size: {business_size}
+
+            Data:
             {summary}
 
             Question: {user_input}
+
+            Give personalized insights and suggestions.
             """
 
             response = client.chat.completions.create(
@@ -157,15 +217,21 @@ if uploaded_file or use_sample:
         for role, msg in st.session_state.history:
             st.write(f"**{role}:** {msg}")
 
-    # REPORT
+    # ---------------- REPORT ----------------
     with tab4:
+        st.subheader("📥 Download Report")
+
         report = f"""
+Customer: {customer_name}
+Business: {business_name}
+Industry: {industry}
+
 Sales: {total_sales}
 Expenses: {total_expenses}
 Profit: {total_profit}
 """
 
-        st.download_button("Download", report, "report.txt")
+        st.download_button("Download Report", report, "report.txt")
 
 else:
-    st.info("Upload file or use sample")
+    st.info("👈 Upload file or use sample data to start")
