@@ -78,6 +78,7 @@ if uploaded_file or use_sample:
     else:
         df = pd.read_csv(uploaded_file)
 
+    # CLEAN
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df["revenue"] = pd.to_numeric(df["revenue"], errors="coerce")
     df["cost"] = pd.to_numeric(df["cost"], errors="coerce")
@@ -89,132 +90,106 @@ if uploaded_file or use_sample:
 
     df["profit"] = df["revenue"] - df["cost"]
 
-    tab1, tab2, tab3 = st.tabs(["📊 Dashboard","📈 Trends","🤖 AI"])
+    # ---------------- AI SECTION ----------------
+    st.subheader("🤖 AI Assistant")
 
-    # ---------------- DASHBOARD ----------------
-    with tab1:
-        st.metric("Sales", f"${df['revenue'].sum():.2f}")
-        st.metric("Profit", f"${df['profit'].sum():.2f}")
-        st.dataframe(df)
+    # -------- INPUT --------
+    user_input = st.chat_input("Ask anything about your data...")
 
-    # ---------------- TRENDS ----------------
-    with tab2:
-        st.line_chart(df.set_index("date")[["revenue","cost","profit"]])
+    if user_input:
 
-    # ---------------- AI ----------------
-    with tab3:
+        q = user_input.lower().strip()
 
-        st.subheader("🤖 AI Assistant")
+        # -------- INVALID INPUT --------
+        if len(q) < 3 or not any(c.isalpha() for c in q):
+            response = "Please ask a valid business question."
+            chart_df = None
 
-        # -------- INPUT FIRST --------
-        user_input = st.chat_input("Ask your business question...")
+        else:
 
-        if user_input:
+            # -------- STEP 1: ASK AI FOR CODE --------
+            prompt = f"""
+            You are a data analyst.
 
-            q = user_input.lower().strip()
+            Convert the question into pandas code.
 
-            # -------- INVALID INPUT --------
-            if len(q) < 3 or not any(c.isalpha() for c in q):
-                response = "Please ask a valid business question."
-                chart_df = None
+            RULES:
+            - Use ONLY dataframe df
+            - No imports
+            - One line of code
+            - Must return a value
+            - If chart needed → return dataframe
 
-            else:
+            Columns: {list(df.columns)}
 
-                # -------- MONTH FILTER --------
-                if "january" in q:
-                    data = df[df["date"].dt.month == 1]
-                elif "february" in q or "feb" in q:
-                    data = df[df["date"].dt.month == 2]
-                elif "march" in q:
-                    data = df[df["date"].dt.month == 3]
+            Question: {user_input}
+            """
+
+            try:
+                ai = client.chat.completions.create(
+                    model="llama-3.1-8b-instant",
+                    messages=[{"role":"user","content":prompt}],
+                    temperature=0
+                )
+
+                code = ai.choices[0].message.content.strip()
+
+                # -------- SECURITY --------
+                unsafe = ["import", "os", "sys", "open", "__", "exec", "eval"]
+
+                if any(x in code.lower() for x in unsafe):
+                    response = "❌ Unsafe query blocked."
+                    chart_df = None
+
                 else:
-                    data = df
-
-                response = None
-                chart_df = None
-
-                # -------- CHART --------
-                if any(x in q for x in ["chart","graph","plot"]):
-                    chart_df = data
-                    response = "Here is your chart 👇"
-
-                # -------- CALCULATIONS --------
-                elif "total profit" in q:
-                    response = f"Total profit: ${data['profit'].sum():.2f}"
-
-                elif "total revenue" in q or "total sales" in q:
-                    response = f"Total revenue: ${data['revenue'].sum():.2f}"
-
-                elif "average profit" in q:
-                    response = f"Average profit: ${data['profit'].mean():.2f}"
-
-                elif "average revenue" in q:
-                    response = f"Average revenue: ${data['revenue'].mean():.2f}"
-
-                elif "median profit" in q:
-                    response = f"Median profit: ${data['profit'].median():.2f}"
-
-                elif "max profit" in q:
-                    row = data.loc[data["profit"].idxmax()]
-                    response = f"Max profit: {row['profit']} on {row['date'].date()}"
-
-                elif "max revenue" in q or "max sale" in q:
-                    row = data.loc[data["revenue"].idxmax()]
-                    response = f"Max revenue: {row['revenue']} on {row['date'].date()}"
-
-                elif "min profit" in q:
-                    row = data.loc[data["profit"].idxmin()]
-                    response = f"Min profit: {row['profit']} on {row['date'].date()}"
-
-                elif "min revenue" in q:
-                    row = data.loc[data["revenue"].idxmin()]
-                    response = f"Min revenue: {row['revenue']} on {row['date'].date()}"
-
-                # -------- FALLBACK AI (INSIGHTS ONLY) --------
-                else:
-                    prompt = f"""
-                    Give business insights only.
-                    Do NOT calculate numbers.
-
-                    Data:
-                    {data.head(10).to_string()}
-
-                    Question: {user_input}
-                    """
-
                     try:
-                        ai = client.chat.completions.create(
-                            model="llama-3.1-8b-instant",
-                            messages=[{"role":"user","content":prompt}],
-                            temperature=0.3
-                        )
-                        response = ai.choices[0].message.content
+                        result = eval(code, {"df": df})
+
+                        # -------- HANDLE RESULT --------
+                        if isinstance(result, pd.DataFrame):
+                            response = "Here is your chart 👇"
+                            chart_df = result
+
+                        elif isinstance(result, (int, float)):
+                            response = f"Result: {round(result,2)}"
+                            chart_df = None
+
+                        else:
+                            response = f"Result: {result}"
+                            chart_df = None
+
                     except:
-                        response = "AI unavailable"
+                        response = "⚠️ Could not compute. Try rephrasing."
+                        chart_df = None
 
-            # -------- SAVE MESSAGE --------
-            st.session_state.messages.append({
-                "role": "user",
-                "content": user_input
-            })
+            except:
+                response = "AI unavailable"
+                chart_df = None
 
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": response,
-                "chart": chart_df
-            })
+        # -------- SAVE --------
+        st.session_state.messages.append({
+            "role": "user",
+            "content": user_input
+        })
 
-            st.rerun()
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": response,
+            "chart": chart_df
+        })
 
-        # -------- DISPLAY CHAT --------
-        for msg in st.session_state.messages:
-            with st.chat_message(msg["role"]):
-                st.markdown(msg["content"])
+        st.rerun()
 
-                if msg.get("chart") is not None:
-                    st.line_chart(
-                        msg["chart"].set_index("date")[["revenue","cost","profit"]]
-                    )
+    # -------- DISPLAY CHAT --------
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+            if msg.get("chart") is not None:
+                try:
+                    st.line_chart(msg["chart"].set_index("date"))
+                except:
+                    st.dataframe(msg["chart"])
 
 else:
     st.info("Upload data to start")
