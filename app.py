@@ -67,7 +67,7 @@ st.write(f”Welcome, **{st.session_state.user[‘name’]}**! Tell us about you
 
 ```
 industry = st.selectbox("Industry", ["Restaurant", "Retail", "Gas Station", "Services", "Other"])
-size = st.selectbox("Business Size", ["Small (1–10 employees)", "Medium (11–50)", "Large (50+)"])
+size = st.selectbox("Business Size", ["Small (1-10 employees)", "Medium (11-50)", "Large (50+)"])
 business_name = st.text_input("Business Name (optional)", placeholder="e.g. Joe's Diner")
 
 if st.button("Continue to Dashboard →"):
@@ -164,7 +164,7 @@ user = st.session_state.user
 business = st.session_state.business
 
 st.title(“🚀 AI Business Copilot”)
-st.success(f”Welcome back, **{user[‘name’]}** — {business.get(‘name’, ‘’)} 👋”)
+st.success(f”Welcome back, **{user[‘name’]}** - {business.get(‘name’, ‘’)} 👋”)
 
 # ── Sidebar ──────────────────────────────────────────────────────
 
