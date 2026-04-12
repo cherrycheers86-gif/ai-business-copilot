@@ -79,6 +79,11 @@ MONTH_MAP = {
     "september": 9, "october": 10, "november": 11, "december": 12,
 }
 
+# FIX 2: full-word keyword matching to avoid "pro" triggering "profit"
+def has_word(text, word):
+    import re
+    return bool(re.search(r'\b' + word + r'\b', text))
+
 def get_sample_data():
     dates = pd.date_range("2026-01-01", periods=60)
     revenue = [1000 + i * 50 for i in range(60)]
@@ -113,6 +118,18 @@ def filter_by_month(df, text):
             return filtered, month_name.capitalize()
     return df, None
 
+# FIX 4: year filter - if a year is mentioned and not in data, return None
+def filter_by_year(df, text):
+    import re
+    years = re.findall(r'\b(20\d{2})\b', text)
+    if not years:
+        return df, None
+    year = int(years[0])
+    filtered = df[df["date"].dt.year == year]
+    if filtered.empty:
+        return None, str(year)
+    return filtered, str(year)
+
 def build_ai_context(df):
     summary_rows = df.tail(10)[["date", "revenue", "cost", "profit"]].copy()
     summary_rows["date"] = summary_rows["date"].dt.strftime("%Y-%m-%d")
@@ -132,7 +149,9 @@ def build_ai_context(df):
         "- Total Profit:  $" + str(round(total_profit, 2)) + "\n"
         "- Avg Margin:    " + str(round(avg_margin, 1)) + "%\n\n"
         "RECENT DATA (last 10 records):\n" + summary_str + "\n\n"
-        "Answer the user's question using this data. Be concise, specific, and give at least one actionable recommendation."
+        "Answer the user's question using this data. Be concise and specific. "
+        "Do NOT use LaTeX, dollar signs inside math expressions, or any special formatting. "
+        "Write numbers plainly like: $36,450. Give at least one actionable recommendation."
     )
     return context
 
@@ -187,9 +206,9 @@ df = st.session_state.df
 # KPI Row
 st.subheader("Overview")
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("Total Revenue", "$" + str(f"{df['revenue'].sum():,.2f}"))
-col2.metric("Total Costs", "$" + str(f"{df['cost'].sum():,.2f}"))
-col3.metric("Total Profit", "$" + str(f"{df['profit'].sum():,.2f}"))
+col1.metric("Total Revenue", "$" + f"{df['revenue'].sum():,.2f}")
+col2.metric("Total Costs", "$" + f"{df['cost'].sum():,.2f}")
+col3.metric("Total Profit", "$" + f"{df['profit'].sum():,.2f}")
 if "margin_pct" in df.columns:
     col4.metric("Avg Margin", str(round(df["margin_pct"].mean(), 1)) + "%")
 
@@ -213,7 +232,13 @@ for msg in st.session_state.messages:
         st.markdown(msg["content"])
         if msg.get("chart") is not None:
             try:
-                st.line_chart(msg["chart"].set_index("date")[[msg.get("chart_metric", "revenue")]])
+                col = msg.get("chart_metric", "revenue")
+                chart_data = msg["chart"].set_index("date")[[col]]
+                # FIX 3: use bar chart when user asked for bar
+                if msg.get("chart_type") == "bar":
+                    st.bar_chart(chart_data)
+                else:
+                    st.line_chart(chart_data)
             except Exception:
                 st.dataframe(msg["chart"])
 
@@ -225,7 +250,17 @@ if user_input:
     response = ""
     chart_df_out = None
     chart_metric_out = "revenue"
+    chart_type_out = "line"
 
+    # FIX 4: year filter first
+    data, matched_year = filter_by_year(data, text)
+    if data is None:
+        response = "No data found for " + matched_year + ". Your data covers " + str(df["date"].min().date()) + " to " + str(df["date"].max().date()) + "."
+        st.session_state.messages.append({"role": "user", "content": user_input})
+        st.session_state.messages.append({"role": "assistant", "content": response})
+        st.rerun()
+
+    # Month filter
     data, matched_month = filter_by_month(data, text)
     if data is None:
         response = "No data found for " + matched_month + ". Try another month or check your dataset."
@@ -233,43 +268,57 @@ if user_input:
         st.session_state.messages.append({"role": "assistant", "content": response})
         st.rerun()
 
-    if "profit" in text:
+    # FIX 2: use whole-word matching for metric detection
+    # FIX 2: also detect "sales" as revenue
+    if has_word(text, "profit") or has_word(text, "loss"):
         metric = "profit"
-    elif "cost" in text or "expense" in text:
+    elif has_word(text, "cost") or has_word(text, "expense") or has_word(text, "costs"):
         metric = "cost"
-    elif "margin" in text:
+    elif has_word(text, "margin"):
         metric = "margin_pct"
+    elif has_word(text, "sales") or has_word(text, "revenue") or has_word(text, "income"):
+        metric = "revenue"
     else:
         metric = "revenue"
 
     chart_metric_out = metric if metric in ["revenue", "cost", "profit"] else "revenue"
 
+    # FIX 3: detect bar chart request
+    if "bar" in text:
+        chart_type_out = "bar"
+
+    period_label = ""
+    if matched_month:
+        period_label = "in " + matched_month
+    elif matched_year:
+        period_label = "in " + matched_year
+    else:
+        period_label = "overall"
+
     try:
-        if "max" in text or "highest" in text or "best" in text:
+        if has_word(text, "max") or has_word(text, "highest") or has_word(text, "best") or has_word(text, "maximum"):
             row = data.loc[data[metric].idxmax()]
             response = "Highest " + metric + ": $" + f"{row[metric]:,.2f}" + " on " + str(row["date"].date())
 
-        elif "min" in text or "lowest" in text or "worst" in text:
+        elif has_word(text, "min") or has_word(text, "lowest") or has_word(text, "worst") or has_word(text, "minimum"):
             row = data.loc[data[metric].idxmin()]
             response = "Lowest " + metric + ": $" + f"{row[metric]:,.2f}" + " on " + str(row["date"].date())
 
-        elif "total" in text or "sum" in text:
-            period = ("in " + matched_month) if matched_month else "overall"
-            response = "Total " + metric + " " + period + ": $" + f"{data[metric].sum():,.2f}"
+        elif has_word(text, "total") or has_word(text, "sum"):
+            response = "Total " + metric + " " + period_label + ": $" + f"{data[metric].sum():,.2f}"
 
-        elif "average" in text or "avg" in text or "mean" in text:
-            period = ("in " + matched_month) if matched_month else "overall"
-            response = "Average " + metric + " " + period + ": $" + f"{data[metric].mean():,.2f}"
+        elif has_word(text, "average") or has_word(text, "avg") or has_word(text, "mean"):
+            response = "Average " + metric + " " + period_label + ": $" + f"{data[metric].mean():,.2f}"
 
-        elif "top" in text:
+        elif has_word(text, "top"):
             n = next((int(w) for w in text.split() if w.isdigit()), 5)
             top_df = data.sort_values(metric, ascending=False).head(n)[["date", "revenue", "cost", "profit"]]
-            response = "Top " + str(n) + " days by " + metric + ":\n\n" + top_df.to_markdown(index=False)
+            # FIX 1: use to_string instead of to_markdown to avoid tabulate dependency
+            response = "Top " + str(n) + " days by " + metric + ":\n\n```\n" + top_df.to_string(index=False) + "\n```"
             chart_df_out = top_df.sort_values("date")
 
-        elif any(k in text for k in ["chart", "graph", "trend", "show", "plot", "visualize"]):
-            period = ("in " + matched_month) if matched_month else "(all time)"
-            response = metric.capitalize() + " trend " + period
+        elif any(k in text for k in ["chart", "graph", "trend", "show", "plot", "visualize", "draw", "display"]):
+            response = metric.capitalize() + " trend " + period_label
             chart_df_out = data[["date", metric]].rename(columns={metric: chart_metric_out})
 
         else:
@@ -286,7 +335,7 @@ if user_input:
             response = ai_response.choices[0].message.content
 
     except KeyError as e:
-        response = "Column not found: " + str(e) + ". Available: " + ", ".join(df.columns.tolist())
+        response = "Column not found: " + str(e) + ". Available columns: " + ", ".join(df.columns.tolist())
     except Exception as e:
         response = "Something went wrong: " + str(e)
 
@@ -296,5 +345,6 @@ if user_input:
         "content": response,
         "chart": chart_df_out,
         "chart_metric": chart_metric_out,
+        "chart_type": chart_type_out,
     })
     st.rerun()
