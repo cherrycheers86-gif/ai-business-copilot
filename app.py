@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import json
 from groq import Groq
 
 # ---------------- CONFIG ----------------
@@ -90,81 +91,108 @@ if uploaded_file or use_sample:
 
     df["profit"] = df["revenue"] - df["cost"]
 
-    # ---------------- AI SECTION ----------------
-    st.subheader("🤖 AI Assistant")
+    # ---------------- AI ----------------
+    st.subheader("🤖 AI Assistant (Enterprise Mode)")
 
-    # -------- INPUT --------
-    user_input = st.chat_input("Ask anything about your data...")
+    user_input = st.chat_input("Ask anything about your business...")
 
     if user_input:
 
-        q = user_input.lower().strip()
+        # -------- STEP 1: INTENT SPLIT --------
+        intent_prompt = f"""
+        Break this into tasks.
 
-        # -------- INVALID INPUT --------
-        if len(q) < 3 or not any(c.isalpha() for c in q):
-            response = "Please ask a valid business question."
-            chart_df = None
+        Return JSON:
+        {{
+          "tasks":[
+            {{"type":"calculation","metric":"profit","operation":"max","month":"january"}},
+            {{"type":"chart","metric":"profit","month":"january"}},
+            {{"type":"insight"}}
+          ]
+        }}
 
-        else:
+        Question: {user_input}
+        """
 
-            # -------- STEP 1: ASK AI FOR CODE --------
-            prompt = f"""
-            You are a data analyst.
+        try:
+            ai = client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[{"role":"user","content":intent_prompt}],
+                temperature=0
+            )
+            parsed = json.loads(ai.choices[0].message.content)
+            tasks = parsed.get("tasks", [])
+        except:
+            tasks = [{"type":"insight"}]
 
-            Convert the question into pandas code.
+        responses = []
+        chart_df = None
 
-            RULES:
-            - Use ONLY dataframe df
-            - No imports
-            - One line of code
-            - Must return a value
-            - If chart needed → return dataframe
+        # -------- STEP 2: EXECUTION --------
+        for task in tasks:
 
-            Columns: {list(df.columns)}
+            data = df.copy()
 
-            Question: {user_input}
-            """
+            month = task.get("month")
+            if month == "january":
+                data = data[data["date"].dt.month == 1]
+            elif month == "february":
+                data = data[data["date"].dt.month == 2]
+            elif month == "march":
+                data = data[data["date"].dt.month == 3]
 
-            try:
-                ai = client.chat.completions.create(
-                    model="llama-3.1-8b-instant",
-                    messages=[{"role":"user","content":prompt}],
-                    temperature=0
-                )
+            if task["type"] == "calculation":
 
-                code = ai.choices[0].message.content.strip()
+                metric = task.get("metric", "revenue")
+                op = task.get("operation", "total")
 
-                # -------- SECURITY --------
-                unsafe = ["import", "os", "sys", "open", "__", "exec", "eval"]
+                try:
+                    if op == "max":
+                        row = data.loc[data[metric].idxmax()]
+                        responses.append(f"Max {metric}: {row[metric]} on {row['date'].date()}")
 
-                if any(x in code.lower() for x in unsafe):
-                    response = "❌ Unsafe query blocked."
-                    chart_df = None
+                    elif op == "min":
+                        row = data.loc[data[metric].idxmin()]
+                        responses.append(f"Min {metric}: {row[metric]} on {row['date'].date()}")
 
-                else:
-                    try:
-                        result = eval(code, {"df": df})
+                    elif op == "total":
+                        responses.append(f"Total {metric}: ${data[metric].sum():.2f}")
 
-                        # -------- HANDLE RESULT --------
-                        if isinstance(result, pd.DataFrame):
-                            response = "Here is your chart 👇"
-                            chart_df = result
+                    elif op == "average":
+                        responses.append(f"Average {metric}: ${data[metric].mean():.2f}")
 
-                        elif isinstance(result, (int, float)):
-                            response = f"Result: {round(result,2)}"
-                            chart_df = None
+                    elif op == "median":
+                        responses.append(f"Median {metric}: ${data[metric].median():.2f}")
 
-                        else:
-                            response = f"Result: {result}"
-                            chart_df = None
+                except:
+                    responses.append("⚠️ Calculation failed")
 
-                    except:
-                        response = "⚠️ Could not compute. Try rephrasing."
-                        chart_df = None
+            elif task["type"] == "chart":
+                chart_df = data
 
-            except:
-                response = "AI unavailable"
-                chart_df = None
+            elif task["type"] == "insight":
+
+                insight_prompt = f"""
+                Give business insights only.
+
+                Data:
+                {data.head(10).to_string()}
+
+                Question:
+                {user_input}
+                """
+
+                try:
+                    ai = client.chat.completions.create(
+                        model="llama-3.1-8b-instant",
+                        messages=[{"role":"user","content":insight_prompt}],
+                        temperature=0.3
+                    )
+                    responses.append(ai.choices[0].message.content)
+                except:
+                    responses.append("⚠️ Insight failed")
+
+        final_response = "\n\n".join(responses)
 
         # -------- SAVE --------
         st.session_state.messages.append({
@@ -174,22 +202,21 @@ if uploaded_file or use_sample:
 
         st.session_state.messages.append({
             "role": "assistant",
-            "content": response,
+            "content": final_response,
             "chart": chart_df
         })
 
         st.rerun()
 
-    # -------- DISPLAY CHAT --------
+    # -------- DISPLAY --------
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
             if msg.get("chart") is not None:
-                try:
-                    st.line_chart(msg["chart"].set_index("date"))
-                except:
-                    st.dataframe(msg["chart"])
+                st.line_chart(
+                    msg["chart"].set_index("date")[["revenue","cost","profit"]]
+                )
 
 else:
     st.info("Upload data to start")
