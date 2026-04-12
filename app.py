@@ -76,6 +76,8 @@ MONTH_MAP = {
     "september": 9, "october": 10, "november": 11, "december": 12,
 }
 
+MONTH_NUM_TO_NAME = {v: k.capitalize() for k, v in MONTH_MAP.items()}
+
 def has_word(text, word):
     return bool(re.search(r'\b' + word + r'\b', text))
 
@@ -121,6 +123,41 @@ def filter_by_year(df, text):
         return None, str(year)
     return filtered, str(year)
 
+# FIX 1 & 4: extract a specific date from question text
+def extract_specific_date(text):
+    patterns = [
+        r'(\d{4}-\d{2}-\d{2})',
+        r'(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})[,\s]+(\d{4})',
+        r'(\d{1,2})[/-](\d{1,2})[/-](\d{4})',
+    ]
+    for pat in patterns:
+        m = re.search(pat, text)
+        if m:
+            try:
+                return pd.to_datetime(m.group(0), infer_datetime_format=True)
+            except Exception:
+                pass
+    return None
+
+# FIX 2: extract after/before date filters
+def extract_date_filter(df, text):
+    after_match = re.search(r'after\s+([\w\s,]+?(?:20\d{2}))', text)
+    before_match = re.search(r'before\s+([\w\s,]+?(?:20\d{2}))', text)
+    filtered = df.copy()
+    note = ""
+    try:
+        if after_match:
+            dt = pd.to_datetime(after_match.group(1).strip(), infer_datetime_format=True)
+            filtered = filtered[filtered["date"] > dt]
+            note = "after " + str(dt.date())
+        if before_match:
+            dt = pd.to_datetime(before_match.group(1).strip(), infer_datetime_format=True)
+            filtered = filtered[filtered["date"] < dt]
+            note = ("before " + str(dt.date())) if not note else (note + " and before " + str(dt.date()))
+    except Exception:
+        pass
+    return filtered, note
+
 def build_ai_context(df):
     summary_rows = df.tail(10)[["date", "revenue", "cost", "profit"]].copy()
     summary_rows["date"] = summary_rows["date"].dt.strftime("%Y-%m-%d")
@@ -146,13 +183,14 @@ def build_ai_context(df):
     )
     return context
 
-# FIX 2: words that should always go to AI, never to keyword handlers
 AI_INTENT_PHRASES = [
     "how to", "how can", "ways to", "best way", "best approach",
     "ideas to", "suggestions", "recommend", "advice", "strategy",
     "improve", "grow", "increase my", "help me", "what should",
     "explain", "tell me about", "performance metric", "performance matrix",
     "kpi", "key performance", "remember", "last question",
+    "where is", "who is", "what is the president", "located",
+    "varies", "relationship", "compare", "correlation",
 ]
 
 def is_ai_intent(text):
@@ -215,11 +253,10 @@ col3.metric("Total Profit", "$" + f"{df['profit'].sum():,.2f}")
 if "margin_pct" in df.columns:
     col4.metric("Avg Margin", str(round(df["margin_pct"].mean(), 1)) + "%")
 
-# Chart
+# FIX 5: chart only shows the selected metric column
 st.subheader("Trend")
 metric_choice = st.selectbox("Chart metric", ["revenue", "cost", "profit"], label_visibility="collapsed")
-chart_df = df.set_index("date")[[metric_choice]]
-st.line_chart(chart_df)
+st.line_chart(df.set_index("date")[[metric_choice]])
 
 with st.expander("Raw Data"):
     st.dataframe(df.sort_values("date", ascending=False), use_container_width=True)
@@ -233,10 +270,13 @@ for msg in st.session_state.messages:
         if msg.get("chart") is not None:
             try:
                 chart_data = msg["chart"].set_index("date")
-                # FIX 3: show multiple columns if present (revenue + cost together)
-                cols_to_show = [c for c in ["revenue", "cost", "profit"] if c in chart_data.columns]
-                if msg.get("chart_metric") and msg["chart_metric"] in chart_data.columns:
+                # FIX 3: only keep numeric columns that are positive-valued metrics
+                allowed = [c for c in ["revenue", "cost", "profit"] if c in chart_data.columns]
+                # if a single metric was specified, show only that
+                if msg.get("chart_metric") and msg["chart_metric"] in chart_data.columns and not msg.get("show_multi"):
                     cols_to_show = [msg["chart_metric"]]
+                else:
+                    cols_to_show = allowed
                 if msg.get("chart_type") == "bar":
                     st.bar_chart(chart_data[cols_to_show])
                 else:
@@ -253,13 +293,13 @@ if user_input:
     chart_df_out = None
     chart_metric_out = "revenue"
     chart_type_out = "line"
-    multi_responses = []
+    show_multi = False
 
-    # FIX 2: check for AI intent phrases first before any keyword matching
+    # AI intent check first
     if is_ai_intent(text):
         context = build_ai_context(data)
         try:
-            ai_response = client.chat.completions.create(
+            ai_resp = client.chat.completions.create(
                 model="llama-3.1-8b-instant",
                 messages=[
                     {"role": "system", "content": context},
@@ -268,10 +308,31 @@ if user_input:
                 temperature=0.5,
                 max_tokens=500,
             )
-            response = ai_response.choices[0].message.content
+            response = ai_resp.choices[0].message.content
         except Exception as e:
             response = "Something went wrong with AI: " + str(e)
+        st.session_state.messages.append({"role": "user", "content": user_input})
+        st.session_state.messages.append({"role": "assistant", "content": response})
+        st.rerun()
 
+    # FIX 1: specific date lookup
+    specific_date = extract_specific_date(text)
+    # only treat as specific-date if NOT asking for a monthly total
+    is_asking_total_month = (has_word(text, "total") or has_word(text, "sum")) and any(m in text for m in MONTH_MAP)
+    if specific_date is not None and not is_asking_total_month:
+        row = df[df["date"].dt.date == specific_date.date()]
+        if row.empty:
+            min_d = str(df["date"].min().date())
+            max_d = str(df["date"].max().date())
+            response = "No data found for " + str(specific_date.date()) + ". Data covers " + min_d + " to " + max_d + "."
+        else:
+            r = row.iloc[0]
+            response = (
+                "On " + str(r["date"].date()) + ":\n"
+                "- Revenue: $" + f"{r['revenue']:,.2f}" + "\n"
+                "- Cost:    $" + f"{r['cost']:,.2f}" + "\n"
+                "- Profit:  $" + f"{r['profit']:,.2f}"
+            )
         st.session_state.messages.append({"role": "user", "content": user_input})
         st.session_state.messages.append({"role": "assistant", "content": response})
         st.rerun()
@@ -284,10 +345,20 @@ if user_input:
         st.session_state.messages.append({"role": "assistant", "content": response})
         st.rerun()
 
-    # FIX 1: detect multiple months in one question
-    months_found = get_months_from_text(text)
+    # FIX 2: after/before date filter
+    data, date_filter_note = extract_date_filter(data, text)
 
-    # Metric detection using whole-word matching
+    # Month filter (only if no after/before filter applied)
+    months_found = get_months_from_text(text)
+    matched_month = None
+    if not date_filter_note and months_found:
+        month_label, month_num = months_found[0]
+        month_data = df[df["date"].dt.month == month_num]
+        if not month_data.empty:
+            data = month_data
+            matched_month = month_label
+
+    # Metric detection
     if has_word(text, "profit") or has_word(text, "loss") or has_word(text, "gain"):
         metric = "profit"
     elif has_word(text, "cost") or has_word(text, "expense") or has_word(text, "costs") or has_word(text, "expenses"):
@@ -304,110 +375,97 @@ if user_input:
     if "bar" in text:
         chart_type_out = "bar"
 
-    # FIX 4: chart intent must be checked BEFORE total/sum intent
     is_chart = any(k in text for k in ["chart", "graph", "trend", "plot", "visualize", "draw", "display"])
-    # FIX 4: only treat as total/sum if not asking for a chart
     is_total = (has_word(text, "total") or has_word(text, "sum")) and not is_chart
     is_avg = (has_word(text, "average") or has_word(text, "avg") or has_word(text, "mean")) and not is_chart
     is_max = has_word(text, "max") or has_word(text, "highest") or has_word(text, "maximum")
     is_min = has_word(text, "min") or has_word(text, "lowest") or has_word(text, "minimum")
     is_top = has_word(text, "top") and not is_ai_intent(text)
 
+    # Period label for responses
+    if date_filter_note:
+        period_label = date_filter_note
+    elif matched_month:
+        period_label = "in " + matched_month
+    elif matched_year:
+        period_label = "in " + matched_year
+    else:
+        period_label = "overall"
+
     try:
-        # FIX 1: handle multiple months (e.g. "max profit in Jan AND Feb")
+        # Multi-month max/min
         if (is_max or is_min) and len(months_found) > 1:
             parts = []
-            for month_label, month_num in months_found:
-                month_data = df[df["date"].dt.month == month_num]
-                if month_data.empty:
-                    parts.append(month_label + ": no data")
+            for mlabel, mnum in months_found:
+                md = df[df["date"].dt.month == mnum]
+                if md.empty:
+                    parts.append(mlabel + ": no data")
                     continue
                 if is_max:
-                    row = month_data.loc[month_data[metric].idxmax()]
-                    parts.append(month_label + " - Highest " + metric + ": $" + f"{row[metric]:,.2f}" + " on " + str(row["date"].date()))
+                    row = md.loc[md[metric].idxmax()]
+                    parts.append(mlabel + " - Highest " + metric + ": $" + f"{row[metric]:,.2f}" + " on " + str(row["date"].date()))
                 else:
-                    row = month_data.loc[month_data[metric].idxmin()]
-                    parts.append(month_label + " - Lowest " + metric + ": $" + f"{row[metric]:,.2f}" + " on " + str(row["date"].date()))
+                    row = md.loc[md[metric].idxmin()]
+                    parts.append(mlabel + " - Lowest " + metric + ": $" + f"{row[metric]:,.2f}" + " on " + str(row["date"].date()))
             response = "\n\n".join(parts)
 
         elif is_max:
-            if months_found:
-                month_label, month_num = months_found[0]
-                data = df[df["date"].dt.month == month_num]
-                period = "in " + month_label
+            if data.empty:
+                response = "No data found for that period."
             else:
-                period = "overall"
-            row = data.loc[data[metric].idxmax()]
-            response = "Highest " + metric + " " + period + ": $" + f"{row[metric]:,.2f}" + " on " + str(row["date"].date())
+                row = data.loc[data[metric].idxmax()]
+                response = "Highest " + metric + " " + period_label + ": $" + f"{row[metric]:,.2f}" + " on " + str(row["date"].date())
 
         elif is_min:
-            if months_found:
-                month_label, month_num = months_found[0]
-                data = df[df["date"].dt.month == month_num]
-                period = "in " + month_label
+            if data.empty:
+                response = "No data found for that period."
             else:
-                period = "overall"
-            row = data.loc[data[metric].idxmin()]
-            response = "Lowest " + metric + " " + period + ": $" + f"{row[metric]:,.2f}" + " on " + str(row["date"].date())
+                row = data.loc[data[metric].idxmin()]
+                response = "Lowest " + metric + " " + period_label + ": $" + f"{row[metric]:,.2f}" + " on " + str(row["date"].date())
 
         elif is_total:
-            if months_found:
-                month_label, month_num = months_found[0]
-                data = df[df["date"].dt.month == month_num]
-                period = "in " + month_label
+            if data.empty:
+                response = "No data found for that period."
             else:
-                period = "overall"
-            response = "Total " + metric + " " + period + ": $" + f"{data[metric].sum():,.2f}"
+                response = "Total " + metric + " " + period_label + ": $" + f"{data[metric].sum():,.2f}"
 
         elif is_avg:
-            if months_found:
-                month_label, month_num = months_found[0]
-                data = df[df["date"].dt.month == month_num]
-                period = "in " + month_label
+            if data.empty:
+                response = "No data found for that period."
             else:
-                period = "overall"
-            response = "Average " + metric + " " + period + ": $" + f"{data[metric].mean():,.2f}"
+                response = "Average " + metric + " " + period_label + ": $" + f"{data[metric].mean():,.2f}"
 
         elif is_top:
             n = next((int(w) for w in text.split() if w.isdigit()), 5)
-            if months_found:
-                month_label, month_num = months_found[0]
-                data = df[df["date"].dt.month == month_num]
             top_df = data.sort_values(metric, ascending=False).head(n)[["date", "revenue", "cost", "profit"]]
             response = "Top " + str(n) + " days by " + metric + ":\n\n```\n" + top_df.to_string(index=False) + "\n```"
-            chart_df_out = top_df.sort_values("date")
+            # FIX 3: chart only the metric column, not all columns
+            chart_df_out = top_df.sort_values("date")[["date", metric]]
+            chart_metric_out = metric if metric in ["revenue", "cost", "profit"] else "revenue"
 
         elif is_chart:
-            # FIX 3: if user says "revenue and expenses" or "sales and expenses", show both columns
-            show_multi = any(p in text for p in ["and expense", "and cost", "versus", "vs"])
-            if months_found:
-                month_label, month_num = months_found[0]
-                data = df[df["date"].dt.month == month_num]
-                period = "in " + month_label
-            elif matched_year:
-                period = "in " + matched_year
-            else:
-                period = "(all time)"
-
-            if show_multi:
+            show_both = any(p in text for p in ["and expense", "and cost", "versus", "vs", "and revenue", "and sales", "and profit"])
+            if show_both:
                 cols = []
-                if metric == "revenue" or has_word(text, "sales") or has_word(text, "revenue"):
+                if has_word(text, "sales") or has_word(text, "revenue"):
                     cols.append("revenue")
                 if has_word(text, "expense") or has_word(text, "cost") or has_word(text, "expenses"):
                     cols.append("cost")
                 if has_word(text, "profit"):
                     cols.append("profit")
                 cols = cols if cols else ["revenue", "cost"]
-                response = "Chart: " + " & ".join(cols) + " " + period
+                response = "Chart: " + " & ".join(cols) + " " + period_label
                 chart_df_out = data[["date"] + cols]
                 chart_metric_out = cols[0]
+                show_multi = True
             else:
-                response = metric.capitalize() + " trend " + period
-                chart_df_out = data[["date", metric]].rename(columns={metric: chart_metric_out})
+                response = metric.capitalize() + " trend " + period_label
+                chart_df_out = data[["date", metric]]
+                chart_metric_out = metric if metric in ["revenue", "cost", "profit"] else "revenue"
 
         else:
             context = build_ai_context(data)
-            ai_response = client.chat.completions.create(
+            ai_resp = client.chat.completions.create(
                 model="llama-3.1-8b-instant",
                 messages=[
                     {"role": "system", "content": context},
@@ -416,7 +474,7 @@ if user_input:
                 temperature=0.5,
                 max_tokens=500,
             )
-            response = ai_response.choices[0].message.content
+            response = ai_resp.choices[0].message.content
 
     except KeyError as e:
         response = "Column not found: " + str(e) + ". Available: " + ", ".join(df.columns.tolist())
@@ -430,5 +488,6 @@ if user_input:
         "chart": chart_df_out,
         "chart_metric": chart_metric_out,
         "chart_type": chart_type_out,
+        "show_multi": show_multi,
     })
     st.rerun()
