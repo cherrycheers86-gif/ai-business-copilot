@@ -4,514 +4,10 @@ import re
 from groq import Groq
  
 # CONFIG
-st.set_page_config(page_title="BizCopilot", layout="wide", page_icon="chart_with_upwards_trend")
+st.set_page_config(page_title="AI Business Copilot", layout="wide")
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
  
-# ================================================================
-# GLOBAL CSS - Premium dark UI + sticky chat input
-# ================================================================
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
- 
-/* -- Reset & Base -- */
-*, *::before, *::after { box-sizing: border-box; }
- 
-html, body, [data-testid="stAppViewContainer"] {
-    background: #0d0f14 !important;
-    color: #e2e8f0 !important;
-    font-family: 'Outfit', sans-serif !important;
-}
- 
-[data-testid="stAppViewContainer"] {
-    background: linear-gradient(135deg, #0d0f14 0%, #111318 50%, #0d0f14 100%) !important;
-}
- 
-/* -- Hide Streamlit chrome -- */
-#MainMenu, footer, header { visibility: hidden; }
-[data-testid="stDecoration"] { display: none; }
- 
-/* -- Sidebar -- */
-[data-testid="stSidebar"] {
-    background: #0a0c10 !important;
-    border-right: 1px solid rgba(99,102,241,0.15) !important;
-}
- 
-[data-testid="stSidebar"] * {
-    font-family: 'Outfit', sans-serif !important;
-}
- 
-[data-testid="stSidebar"] .stButton > button {
-    width: 100%;
-    background: rgba(99,102,241,0.1) !important;
-    border: 1px solid rgba(99,102,241,0.25) !important;
-    color: #a5b4fc !important;
-    border-radius: 10px !important;
-    font-family: 'Outfit', sans-serif !important;
-    font-weight: 500 !important;
-    transition: all 0.2s !important;
-    padding: 0.5rem 1rem !important;
-}
- 
-[data-testid="stSidebar"] .stButton > button:hover {
-    background: rgba(99,102,241,0.2) !important;
-    border-color: rgba(99,102,241,0.5) !important;
-    transform: translateY(-1px) !important;
-}
- 
-/* -- Main content area -- */
-[data-testid="stMain"] {
-    background: transparent !important;
-}
- 
-.block-container {
-    padding: 2rem 2.5rem 0 2.5rem !important;
-    max-width: 100% !important;
-}
- 
-/* -- Title -- */
-h1 {
-    font-family: 'Outfit', sans-serif !important;
-    font-weight: 800 !important;
-    font-size: 1.9rem !important;
-    background: linear-gradient(135deg, #e2e8f0 0%, #a5b4fc 100%) !important;
-    -webkit-background-clip: text !important;
-    -webkit-text-fill-color: transparent !important;
-    background-clip: text !important;
-    margin-bottom: 0 !important;
-    letter-spacing: -0.5px !important;
-}
- 
-h2, h3 {
-    font-family: 'Outfit', sans-serif !important;
-    font-weight: 600 !important;
-    color: #cbd5e1 !important;
-    font-size: 1rem !important;
-    letter-spacing: 0.05em !important;
-    text-transform: uppercase !important;
-}
- 
-/* -- Success / info banners -- */
-[data-testid="stAlert"] {
-    background: rgba(99,102,241,0.08) !important;
-    border: 1px solid rgba(99,102,241,0.2) !important;
-    border-radius: 12px !important;
-    color: #a5b4fc !important;
-    font-family: 'Outfit', sans-serif !important;
-    font-size: 0.875rem !important;
-}
- 
-/* -- Metric cards -- */
-[data-testid="stMetric"] {
-    background: linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.02) 100%) !important;
-    border: 1px solid rgba(255,255,255,0.07) !important;
-    border-radius: 16px !important;
-    padding: 1.25rem 1.5rem !important;
-    transition: transform 0.2s, border-color 0.2s !important;
-}
- 
-[data-testid="stMetric"]:hover {
-    transform: translateY(-2px) !important;
-    border-color: rgba(99,102,241,0.3) !important;
-}
- 
-[data-testid="stMetricLabel"] {
-    font-family: 'JetBrains Mono', monospace !important;
-    font-size: 0.65rem !important;
-    color: #64748b !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.1em !important;
-}
- 
-[data-testid="stMetricValue"] {
-    font-family: 'Outfit', sans-serif !important;
-    font-weight: 700 !important;
-    font-size: 1.6rem !important;
-    color: #f1f5f9 !important;
-}
- 
-/* -- Charts -- */
-[data-testid="stVegaLiteChart"],
-[data-testid="stArrowVegaLiteChart"] {
-    background: rgba(255,255,255,0.02) !important;
-    border: 1px solid rgba(255,255,255,0.06) !important;
-    border-radius: 16px !important;
-    padding: 1rem !important;
-}
- 
-/* -- Selectbox -- */
-[data-testid="stSelectbox"] > div > div {
-    background: rgba(255,255,255,0.04) !important;
-    border: 1px solid rgba(255,255,255,0.1) !important;
-    border-radius: 10px !important;
-    color: #e2e8f0 !important;
-    font-family: 'Outfit', sans-serif !important;
-}
- 
-/* -- Expander -- */
-[data-testid="stExpander"] {
-    background: rgba(255,255,255,0.02) !important;
-    border: 1px solid rgba(255,255,255,0.06) !important;
-    border-radius: 12px !important;
-}
- 
-/* -- Divider -- */
-hr {
-    border-color: rgba(255,255,255,0.06) !important;
-    margin: 1rem 0 !important;
-}
- 
-/* -- File uploader -- */
-[data-testid="stFileUploader"] {
-    background: rgba(255,255,255,0.02) !important;
-    border: 1px dashed rgba(99,102,241,0.3) !important;
-    border-radius: 12px !important;
-    padding: 0.5rem !important;
-}
- 
-/* ================================================================
-   CHAT LAYOUT - ChatGPT / Claude style
-   ================================================================ */
- 
-/* The chat messages scroll area */
-.chat-scroll-area {
-    height: calc(100vh - 340px);
-    overflow-y: auto;
-    padding: 1rem 0 1.5rem 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(99,102,241,0.3) transparent;
-}
- 
-.chat-scroll-area::-webkit-scrollbar {
-    width: 4px;
-}
- 
-.chat-scroll-area::-webkit-scrollbar-thumb {
-    background: rgba(99,102,241,0.3);
-    border-radius: 4px;
-}
- 
-/* Sticky input container pinned to bottom */
-.chat-input-sticky {
-    position: sticky;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: linear-gradient(to top, #0d0f14 85%, transparent);
-    padding: 1rem 0 1.5rem 0;
-    z-index: 100;
-}
- 
-/* Chat bubbles */
-.msg-user {
-    display: flex;
-    justify-content: flex-end;
-    margin-bottom: 0.75rem;
-    animation: slideUp 0.25s ease;
-}
- 
-.msg-user .bubble {
-    max-width: 70%;
-    background: linear-gradient(135deg, #4f46e5, #7c3aed);
-    color: #fff;
-    border-radius: 20px 20px 4px 20px;
-    padding: 0.75rem 1.1rem;
-    font-size: 0.925rem;
-    line-height: 1.6;
-    box-shadow: 0 4px 20px rgba(99,102,241,0.25);
-}
- 
-.msg-bot {
-    display: flex;
-    justify-content: flex-start;
-    margin-bottom: 0.75rem;
-    gap: 0.6rem;
-    align-items: flex-start;
-    animation: slideUp 0.25s ease;
-}
- 
-.bot-avatar {
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #0ea5e9, #6366f1);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.75rem;
-    flex-shrink: 0;
-    margin-top: 2px;
-    box-shadow: 0 2px 10px rgba(99,102,241,0.3);
-}
- 
-.msg-bot .bubble {
-    max-width: 75%;
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.09);
-    color: #e2e8f0;
-    border-radius: 4px 20px 20px 20px;
-    padding: 0.75rem 1.1rem;
-    font-size: 0.925rem;
-    line-height: 1.7;
-}
- 
-.msg-bot .bubble pre {
-    background: rgba(0,0,0,0.3);
-    border-radius: 8px;
-    padding: 0.75rem;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.8rem;
-    overflow-x: auto;
-    margin: 0.5rem 0 0 0;
-    border: 1px solid rgba(255,255,255,0.08);
-}
- 
-.msg-bot .bubble code {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.85rem;
-    color: #a5b4fc;
-    background: rgba(99,102,241,0.12);
-    padding: 0.1rem 0.4rem;
-    border-radius: 4px;
-}
- 
-/* Typing indicator */
-.typing-indicator {
-    display: flex;
-    gap: 4px;
-    align-items: center;
-    padding: 0.5rem 0;
-}
- 
-.typing-indicator span {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: #6366f1;
-    animation: typingBounce 1.2s infinite ease-in-out;
-}
- 
-.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
-.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
- 
-@keyframes typingBounce {
-    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-    30% { transform: translateY(-6px); opacity: 1; }
-}
- 
-@keyframes slideUp {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
- 
-/* -- Streamlit chat input override -- */
-[data-testid="stChatInput"] {
-    background: rgba(255,255,255,0.04) !important;
-    border: 1px solid rgba(99,102,241,0.3) !important;
-    border-radius: 16px !important;
-    box-shadow: 0 0 0 0 rgba(99,102,241,0) !important;
-    transition: border-color 0.2s, box-shadow 0.2s !important;
-}
- 
-[data-testid="stChatInput"]:focus-within {
-    border-color: rgba(99,102,241,0.6) !important;
-    box-shadow: 0 0 0 3px rgba(99,102,241,0.12) !important;
-}
- 
-[data-testid="stChatInput"] textarea {
-    font-family: 'Outfit', sans-serif !important;
-    font-size: 0.95rem !important;
-    color: #e2e8f0 !important;
-    background: transparent !important;
-}
- 
-[data-testid="stChatInput"] textarea::placeholder {
-    color: #475569 !important;
-}
- 
-[data-testid="stChatInput"] button {
-    background: linear-gradient(135deg, #4f46e5, #7c3aed) !important;
-    border-radius: 10px !important;
-    border: none !important;
-    color: white !important;
-}
- 
-/* -- Chat message overrides (streamlit native) -- */
-[data-testid="stChatMessage"] {
-    background: transparent !important;
-    border: none !important;
-    padding: 0 !important;
-}
- 
-/* -- Auth / Onboarding forms -- */
-.auth-card {
-    max-width: 420px;
-    margin: 5vh auto;
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 24px;
-    padding: 2.5rem;
-}
- 
-[data-testid="stTextInput"] input {
-    background: rgba(255,255,255,0.05) !important;
-    border: 1px solid rgba(255,255,255,0.1) !important;
-    border-radius: 10px !important;
-    color: #e2e8f0 !important;
-    font-family: 'Outfit', sans-serif !important;
-}
- 
-[data-testid="stTextInput"] input:focus {
-    border-color: rgba(99,102,241,0.5) !important;
-    box-shadow: 0 0 0 3px rgba(99,102,241,0.1) !important;
-}
- 
-.stRadio label {
-    color: #94a3b8 !important;
-    font-family: 'Outfit', sans-serif !important;
-}
- 
-/* Primary buttons */
-.stButton > button[kind="primary"],
-.stButton > button {
-    background: linear-gradient(135deg, #4f46e5, #7c3aed) !important;
-    border: none !important;
-    border-radius: 10px !important;
-    color: white !important;
-    font-family: 'Outfit', sans-serif !important;
-    font-weight: 600 !important;
-    transition: opacity 0.2s, transform 0.2s !important;
-}
- 
-.stButton > button:hover {
-    opacity: 0.9 !important;
-    transform: translateY(-1px) !important;
-}
- 
-/* Sidebar specific buttons keep their style */
-[data-testid="stSidebar"] .stButton > button {
-    background: rgba(99,102,241,0.1) !important;
-    border: 1px solid rgba(99,102,241,0.25) !important;
-    color: #a5b4fc !important;
-}
- 
-/* Tag chips for onboarding */
-.chip-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 1rem;
-}
- 
-/* Empty state */
-.empty-chat {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    min-height: 280px;
-    color: #334155;
-    text-align: center;
-    gap: 1rem;
-}
- 
-.empty-chat-icon {
-    width: 64px;
-    height: 64px;
-    border-radius: 50%;
-    background: rgba(99,102,241,0.08);
-    border: 1px solid rgba(99,102,241,0.15);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.6rem;
-    margin: 0 auto;
-}
- 
-.empty-chat-title {
-    font-size: 1.05rem;
-    font-weight: 600;
-    color: #475569;
-    margin: 0;
-}
- 
-.empty-chat-sub {
-    font-size: 0.85rem;
-    color: #334155;
-    max-width: 320px;
-    line-height: 1.6;
-    margin: 0;
-}
- 
-.pill-grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    justify-content: center;
-    max-width: 440px;
-}
- 
-.pill {
-    background: rgba(99,102,241,0.07);
-    border: 1px solid rgba(99,102,241,0.18);
-    color: #6366f1;
-    border-radius: 20px;
-    padding: 6px 14px;
-    font-size: 0.8rem;
-    font-family: 'Outfit', sans-serif;
-    cursor: pointer;
-    transition: all 0.15s;
-}
- 
-.pill:hover {
-    background: rgba(99,102,241,0.15);
-    color: #a5b4fc;
-}
- 
-/* Sidebar logo */
-.sidebar-logo {
-    font-family: 'Outfit', sans-serif;
-    font-weight: 800;
-    font-size: 1.3rem;
-    background: linear-gradient(135deg, #e2e8f0, #a5b4fc);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    margin-bottom: 0.25rem;
-}
- 
-.sidebar-sub {
-    font-size: 0.7rem;
-    color: #475569;
-    font-family: 'JetBrains Mono', monospace;
-    margin-bottom: 1.5rem;
-}
- 
-.sidebar-stat {
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 10px;
-    padding: 0.6rem 0.85rem;
-    margin-bottom: 0.5rem;
-    font-size: 0.78rem;
-    color: #64748b;
-    font-family: 'JetBrains Mono', monospace;
-}
- 
-.sidebar-stat span {
-    color: #a5b4fc;
-    font-weight: 500;
-}
-</style>
-""", unsafe_allow_html=True)
- 
-# ================================================================
 # SESSION DEFAULTS
-# ================================================================
 for key, default in {
     "page": "auth",
     "user": None,
@@ -526,66 +22,54 @@ for key, default in {
 # AUTH PAGE
 # ================================================================
 if st.session_state.page == "auth":
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown('<div style="text-align:center;margin-bottom:2rem;">'
-                '<div style="font-family:Outfit,sans-serif;font-weight:800;font-size:2rem;'
-                'background:linear-gradient(135deg,#e2e8f0,#a5b4fc);-webkit-background-clip:text;'
-                '-webkit-text-fill-color:transparent;background-clip:text;">BizCopilot</div>'
-                '<div style="color:#475569;font-size:0.85rem;margin-top:4px;font-family:JetBrains Mono,monospace;">'
-                'AI-powered business intelligence</div></div>', unsafe_allow_html=True)
+    st.title("Login / Signup")
+    mode = st.radio("Select", ["Login", "Signup"])
+    email = st.text_input("Email")
+    password = st.text_input("Password", type="password")
  
-    col_l, col_m, col_r = st.columns([1, 1.2, 1])
-    with col_m:
-        mode = st.radio("", ["Login", "Signup"], horizontal=True, label_visibility="collapsed")
-        email = st.text_input("Email address", placeholder="you@example.com")
-        password = st.text_input("Password", type="password", placeholder="Your password")
- 
-        if mode == "Signup":
-            name = st.text_input("Full Name", placeholder="Your name")
-            if st.button("Create Account", use_container_width=True):
-                if not name or not email or not password:
-                    st.error("Please fill in all fields.")
-                else:
-                    st.session_state.user = {"name": name, "email": email}
-                    st.session_state.page = "onboarding"
-                    st.rerun()
-        else:
-            if st.button("Sign In", use_container_width=True):
-                if not email or not password:
-                    st.error("Please enter email and password.")
-                else:
-                    st.session_state.user = {"name": email.split("@")[0].capitalize(), "email": email}
-                    st.session_state.page = "app"
-                    st.rerun()
+    if mode == "Signup":
+        name = st.text_input("Full Name")
+        if st.button("Create Account"):
+            if not name or not email or not password:
+                st.error("Please fill in all fields.")
+            else:
+                st.session_state.user = {"name": name, "email": email}
+                st.session_state.page = "onboarding"
+                st.rerun()
+    else:
+        if st.button("Login"):
+            if not email or not password:
+                st.error("Please enter your email and password.")
+            else:
+                st.session_state.user = {"name": email.split("@")[0].capitalize(), "email": email}
+                st.session_state.page = "app"
+                st.rerun()
     st.stop()
  
 # ================================================================
 # ONBOARDING PAGE
 # ================================================================
 if st.session_state.page == "onboarding":
-    st.markdown("<br>", unsafe_allow_html=True)
-    col_l, col_m, col_r = st.columns([1, 1.4, 1])
-    with col_m:
-        st.markdown('<div style="font-family:Outfit,sans-serif;font-weight:700;font-size:1.5rem;color:#e2e8f0;margin-bottom:0.5rem;">Tell us about your business</div>', unsafe_allow_html=True)
-        st.markdown('<div style="color:#64748b;font-size:0.875rem;margin-bottom:1.5rem;">We will personalize your dashboard and AI insights.</div>', unsafe_allow_html=True)
+    st.title("Set Up Your Business")
+    st.write("Welcome, " + st.session_state.user["name"] + "! Tell us about your business.")
+    industry = st.selectbox("Industry", ["Restaurant", "Retail", "Gas Station", "Services", "Other"])
+    size = st.selectbox("Business Size", ["Small (1-10 employees)", "Medium (11-50)", "Large (50+)"])
+    business_name = st.text_input("Business Name (optional)", placeholder="e.g. Joe's Diner")
  
-        industry = st.selectbox("Industry", ["Restaurant", "Retail", "Gas Station", "Services", "Other"])
-        size = st.selectbox("Business Size", ["Small (1-10 employees)", "Medium (11-50)", "Large (50+)"])
-        business_name = st.text_input("Business Name (optional)", placeholder="e.g. Joe's Diner")
- 
-        if st.button("Launch Dashboard", use_container_width=True):
-            st.session_state.business = {
-                "industry": industry,
-                "size": size,
-                "name": business_name if business_name else ("My " + industry + " Business"),
-            }
-            st.session_state.page = "app"
-            st.rerun()
+    if st.button("Continue to Dashboard"):
+        st.session_state.business = {
+            "industry": industry,
+            "size": size,
+            "name": business_name if business_name else ("My " + industry + " Business"),
+        }
+        st.session_state.page = "app"
+        st.rerun()
     st.stop()
  
 # ================================================================
 # HELPERS
 # ================================================================
+ 
 MONTH_MAP = {
     "january": 1, "february": 2, "march": 3, "april": 4,
     "may": 5, "june": 6, "july": 7, "august": 8,
@@ -638,12 +122,14 @@ def filter_by_year(df, text):
     return filtered, str(year)
  
 def extract_specific_date(text):
+    # Try ISO format first
     m = re.search(r'\b(\d{4}-\d{2}-\d{2})\b', text)
     if m:
         try:
             return pd.to_datetime(m.group(1))
         except Exception:
             pass
+    # Try "Month DD, YYYY" or "Month DD YYYY"
     m = re.search(
         r'\b(january|february|march|april|may|june|july|august|september|october|november|december)'
         r'\s+(\d{1,2})[,\s]+(\d{4})\b', text)
@@ -652,6 +138,7 @@ def extract_specific_date(text):
             return pd.to_datetime(m.group(0))
         except Exception:
             pass
+    # Try "jan 1 2026" short forms
     m = re.search(
         r'\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+(\d{1,2})[,\s]+(\d{4})\b', text)
     if m:
@@ -661,6 +148,7 @@ def extract_specific_date(text):
             pass
     return None
  
+# FIX 3: after/before uses full dataset, not month-filtered data
 def extract_date_filter(df, text):
     after_match = re.search(r'\bafter\b\s+([\w\s,]+?\d{4})', text)
     before_match = re.search(r'\bbefore\b\s+([\w\s,]+?\d{4})', text)
@@ -679,9 +167,12 @@ def extract_date_filter(df, text):
         pass
     return filtered, note
  
+# FIX 2 & 6: richer AI context - full monthly summary + all data stats
 def build_ai_context(df, full_df=None):
     if full_df is None:
         full_df = df
+ 
+    # Monthly breakdown
     monthly = full_df.groupby(full_df["date"].dt.to_period("M")).agg(
         revenue=("revenue", "sum"),
         cost=("cost", "sum"),
@@ -696,19 +187,25 @@ def build_ai_context(df, full_df=None):
             ", profit=$" + str(int(row["profit"])) +
             ", days=" + str(int(row["days"])) + "\n"
         )
+ 
+    # Recent 10 rows
     recent = full_df.tail(10)[["date", "revenue", "cost", "profit"]].copy()
     recent["date"] = recent["date"].dt.strftime("%Y-%m-%d")
     recent_str = recent.to_string(index=False)
+ 
     total_rev = full_df["revenue"].sum()
     total_cost = full_df["cost"].sum()
     total_profit = full_df["profit"].sum()
     avg_margin = full_df["margin_pct"].mean() if "margin_pct" in full_df.columns else 0
+    min_date = str(full_df["date"].min().date())
+    max_date = str(full_df["date"].max().date())
+ 
     business = st.session_state.business
     context = (
         "You are an AI business analyst for a " + business.get("industry", "small") +
         " business called " + business.get("name", "this business") +
         " (" + business.get("size", "") + ").\n\n"
-        "DATA RANGE: " + str(full_df["date"].min().date()) + " to " + str(full_df["date"].max().date()) + " (" + str(len(full_df)) + " days)\n\n"
+        "DATA RANGE: " + min_date + " to " + max_date + " (" + str(len(full_df)) + " days)\n\n"
         "OVERALL TOTALS:\n"
         "- Total Revenue: $" + f"{total_rev:,.2f}" + "\n"
         "- Total Costs:   $" + f"{total_cost:,.2f}" + "\n"
@@ -716,9 +213,9 @@ def build_ai_context(df, full_df=None):
         "- Avg Margin:    " + f"{avg_margin:.1f}" + "%\n\n"
         "MONTHLY BREAKDOWN:\n" + monthly_str + "\n"
         "RECENT 10 RECORDS:\n" + recent_str + "\n\n"
-        "Rules:\n"
-        "1. Do NOT use LaTeX, dollar signs in math expressions, or code formatting for numbers.\n"
-        "2. Write all money values plainly: $36,450\n"
+        "Rules for your response:\n"
+        "1. Do NOT use LaTeX, dollar signs inside math, or code formatting for numbers.\n"
+        "2. Write all numbers plainly: $36,450 not $36450 or code-formatted values.\n"
         "3. Be concise, specific, and data-driven.\n"
         "4. End with one actionable recommendation.\n"
         "5. If asked to group or compare by month, use the MONTHLY BREAKDOWN above.\n"
@@ -744,11 +241,18 @@ def is_ai_intent(text):
             return True
     return False
  
+# FIX 2: detect multiple distinct intents in one message
 def detect_multi_intent(text):
+    intents = []
     sentences = re.split(r'[?.!]+', text)
-    return [s.strip() for s in sentences if s.strip()]
+    for s in sentences:
+        s = s.strip()
+        if not s:
+            continue
+        intents.append(s)
+    return intents if len(intents) > 1 else []
  
-def answer_single_intent(sentence, full_df):
+def answer_single_intent(sentence, df, full_df):
     text = sentence.lower()
     if has_word(text, "profit") or has_word(text, "loss") or has_word(text, "gain"):
         metric = "profit"
@@ -758,16 +262,19 @@ def answer_single_intent(sentence, full_df):
         metric = "margin_pct"
     else:
         metric = "revenue"
+ 
     months_found = get_months_from_text(text)
-    data = full_df.copy()
+    data = df.copy()
     if months_found:
         ml, mn = months_found[0]
         data = full_df[full_df["date"].dt.month == mn]
         period = "in " + ml
     else:
         period = "overall"
+ 
     if data.empty:
         return period + ": no data"
+ 
     if has_word(text, "total") or has_word(text, "sum"):
         return "Total " + metric + " " + period + ": $" + f"{data[metric].sum():,.2f}"
     elif has_word(text, "average") or has_word(text, "avg") or has_word(text, "mean"):
@@ -786,13 +293,12 @@ def answer_single_intent(sentence, full_df):
 user = st.session_state.user
 business = st.session_state.business
  
-# -- Sidebar ------------------------------------------------------
-with st.sidebar:
-    st.markdown('<div class="sidebar-logo">BizCopilot</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sidebar-sub">' + business.get("industry", "Business") + " / " + business.get("size", "") + '</div>', unsafe_allow_html=True)
+st.title("AI Business Copilot")
+st.success("Welcome back, " + user["name"] + " - " + business.get("name", "") + "!")
  
-    st.markdown("**Data**")
-    uploaded_file = st.file_uploader("Upload CSV", type=["csv"], label_visibility="collapsed")
+with st.sidebar:
+    st.header("Data")
+    uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
  
     if uploaded_file:
         try:
@@ -804,57 +310,30 @@ with st.sidebar:
         except Exception as e:
             st.error("Could not read file: " + str(e))
  
-    if st.button("Use Sample Data", use_container_width=True):
+    if st.button("Use Sample Data"):
         st.session_state.df = get_sample_data()
         st.success("Sample data loaded")
  
     if st.session_state.df is not None:
-        _df = st.session_state.df
-        st.markdown(
-            '<div class="sidebar-stat">Rows: <span>' + str(len(_df)) + '</span></div>'
-            '<div class="sidebar-stat">From: <span>' + str(_df["date"].min().date()) + '</span></div>'
-            '<div class="sidebar-stat">To: <span>' + str(_df["date"].max().date()) + '</span></div>',
-            unsafe_allow_html=True
-        )
+        df = st.session_state.df
+        st.write("Rows: " + str(len(df)))
+        st.write("From: " + str(df["date"].min().date()) + " to " + str(df["date"].max().date()))
  
-    st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("Logout", use_container_width=True):
+    st.divider()
+ 
+    if st.button("Logout"):
         for key in ["page", "user", "business", "messages", "df"]:
             del st.session_state[key]
         st.rerun()
  
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown(
-        '<div style="font-size:0.7rem;color:#334155;font-family:JetBrains Mono,monospace;">'
-        'Signed in as<br><span style="color:#6366f1;">' + user["name"] + '</span></div>',
-        unsafe_allow_html=True
-    )
- 
-# -- No data guard ------------------------------------------------
 if st.session_state.df is None:
-    st.markdown("<br><br>", unsafe_allow_html=True)
-    st.markdown(
-        '<div style="text-align:center;padding:3rem;">'
-        '<div style="font-size:3rem;margin-bottom:1rem;"></div>'
-        '<div style="font-family:Outfit,sans-serif;font-size:1.2rem;font-weight:600;color:#475569;margin-bottom:0.5rem;">No data loaded</div>'
-        '<div style="color:#334155;font-size:0.875rem;">Upload a CSV or use Sample Data from the sidebar to get started.</div>'
-        '</div>',
-        unsafe_allow_html=True
-    )
+    st.info("Upload a CSV or click Use Sample Data to get started.")
     st.stop()
  
 df = st.session_state.df
  
-# -- Header -------------------------------------------------------
-st.markdown(
-    '<h1>AI Business Copilot</h1>'
-    '<div style="color:#475569;font-size:0.875rem;margin-top:2px;margin-bottom:1.25rem;">'
-    'Welcome back, <span style="color:#a5b4fc;font-weight:600;">' + user["name"] + '</span>'
-    ' &nbsp;&bull;&nbsp; ' + business.get("name", "") + '</div>',
-    unsafe_allow_html=True
-)
- 
-# -- KPI Row ------------------------------------------------------
+# KPI Row
+st.subheader("Overview")
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("Total Revenue", "$" + f"{df['revenue'].sum():,.2f}")
 col2.metric("Total Costs", "$" + f"{df['cost'].sum():,.2f}")
@@ -862,98 +341,38 @@ col3.metric("Total Profit", "$" + f"{df['profit'].sum():,.2f}")
 if "margin_pct" in df.columns:
     col4.metric("Avg Margin", str(round(df["margin_pct"].mean(), 1)) + "%")
  
-# -- Trend chart --------------------------------------------------
-c1, c2 = st.columns([1, 3])
-with c1:
-    metric_choice = st.selectbox("", ["revenue", "cost", "profit"], label_visibility="collapsed")
-with c2:
-    pass
-st.line_chart(df.set_index("date")[[metric_choice]], height=200)
+st.subheader("Trend")
+metric_choice = st.selectbox("Chart metric", ["revenue", "cost", "profit"], label_visibility="collapsed")
+st.line_chart(df.set_index("date")[[metric_choice]])
  
 with st.expander("Raw Data"):
     st.dataframe(df.sort_values("date", ascending=False), use_container_width=True)
  
-st.markdown('<hr style="margin:1.25rem 0;">', unsafe_allow_html=True)
+st.divider()
+st.subheader("AI Assistant")
  
-# ================================================================
-# CHAT SECTION - ChatGPT/Claude style layout
-# ================================================================
-st.markdown('<h2 style="margin-bottom:0.75rem;">AI Assistant</h2>', unsafe_allow_html=True)
- 
-# -- Render chat history in a scrollable area ------------------
-msgs_html = '<div class="chat-scroll-area" id="chatArea">'
- 
-if not st.session_state.messages:
-    msgs_html += '''
-    <div class="empty-chat">
-        <div class="empty-chat-icon">*</div>
-        <p class="empty-chat-title">Ask anything about your data</p>
-        <p class="empty-chat-sub">Try: "What are my top 5 profit days?" or "Compare January and February performance"</p>
-        <div class="pill-grid">
-            <span class="pill">Total revenue?</span>
-            <span class="pill">Top 10 profit days</span>
-            <span class="pill">How is my business?</span>
-            <span class="pill">Show revenue trend</span>
-            <span class="pill">Ways to reduce costs</span>
-        </div>
-    </div>
-    '''
-else:
-    for msg in st.session_state.messages:
-        if msg["role"] == "user":
-            msgs_html += (
-                '<div class="msg-user"><div class="bubble">' +
-                msg["content"].replace("\n", "<br>") +
-                '</div></div>'
-            )
-        else:
-            content = msg["content"].replace("\n", "<br>")
-            msgs_html += (
-                '<div class="msg-bot">'
-                '<div class="bot-avatar">AI</div>'
-                '<div class="bubble">' + content + '</div>'
-                '</div>'
-            )
- 
-msgs_html += '</div>'
- 
-# Auto-scroll JS
-msgs_html += '''
-<script>
-    const area = document.getElementById("chatArea");
-    if (area) { area.scrollTop = area.scrollHeight; }
-</script>
-'''
- 
-st.markdown(msgs_html, unsafe_allow_html=True)
- 
-# -- Render charts for messages that have them ------------------
 for msg in st.session_state.messages:
-    if msg.get("chart") is not None:
-        try:
-            chart_data = msg["chart"].set_index("date")
-            allowed = [c for c in ["revenue", "cost", "profit"] if c in chart_data.columns]
-            if msg.get("show_multi"):
-                cols_to_show = allowed
-            elif msg.get("chart_metric") and msg["chart_metric"] in chart_data.columns:
-                cols_to_show = [msg["chart_metric"]]
-            else:
-                cols_to_show = allowed
-            if msg.get("chart_type") == "bar":
-                st.bar_chart(chart_data[cols_to_show], height=220)
-            else:
-                st.line_chart(chart_data[cols_to_show], height=220)
-        except Exception:
-            pass
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+        if msg.get("chart") is not None:
+            try:
+                chart_data = msg["chart"].set_index("date")
+                allowed = [c for c in ["revenue", "cost", "profit"] if c in chart_data.columns]
+                if msg.get("show_multi"):
+                    cols_to_show = allowed
+                elif msg.get("chart_metric") and msg["chart_metric"] in chart_data.columns:
+                    cols_to_show = [msg["chart_metric"]]
+                else:
+                    cols_to_show = allowed
+                if msg.get("chart_type") == "bar":
+                    st.bar_chart(chart_data[cols_to_show])
+                else:
+                    st.line_chart(chart_data[cols_to_show])
+            except Exception:
+                st.dataframe(msg["chart"])
  
-# -- Sticky chat input (always visible at bottom) --------------
-st.markdown('<div class="chat-input-sticky">', unsafe_allow_html=True)
 user_input = st.chat_input("Ask anything about your data...")
-st.markdown('</div>', unsafe_allow_html=True)
  
-# ================================================================
-# MESSAGE PROCESSING
-# ================================================================
 if user_input:
     text = user_input.lower()
     full_df = df.copy()
@@ -964,7 +383,7 @@ if user_input:
     chart_type_out = "line"
     show_multi = False
  
-    # Specific date lookup
+    # FIX 1: specific date lookup runs first, before AI or any other logic
     specific_date = extract_specific_date(text)
     is_asking_total_month = (has_word(text, "total") or has_word(text, "sum")) and any(m in text for m in MONTH_MAP)
     if specific_date is not None and not is_asking_total_month:
@@ -1007,12 +426,12 @@ if user_input:
         st.session_state.messages.append({"role": "assistant", "content": response})
         st.rerun()
  
-    # Multi-intent detection
+    # FIX 2: multi-intent detection - multiple questions in one message
     multi_intents = detect_multi_intent(text)
     if len(multi_intents) > 1:
         parts = []
         for sentence in multi_intents:
-            ans = answer_single_intent(sentence, full_df)
+            ans = answer_single_intent(sentence, data, full_df)
             if ans:
                 parts.append(ans)
         if parts:
@@ -1029,10 +448,10 @@ if user_input:
         st.session_state.messages.append({"role": "assistant", "content": response})
         st.rerun()
  
-    # After/before date filter
+    # FIX 3: after/before filter uses full_df, not month-filtered
     data, date_filter_note = extract_date_filter(full_df, text)
  
-    # Month filter
+    # Month filter (only if no after/before)
     months_found = get_months_from_text(text)
     matched_month = None
     if not date_filter_note and months_found:
@@ -1119,7 +538,7 @@ if user_input:
         elif is_top:
             n = next((int(w) for w in text.split() if w.isdigit()), 5)
             top_df = data.sort_values(metric, ascending=False).head(n)[["date", "revenue", "cost", "profit"]]
-            response = "Top " + str(n) + " days by " + metric + ":\n\n" + top_df.to_string(index=False)
+            response = "Top " + str(n) + " days by " + metric + ":\n\n```\n" + top_df.to_string(index=False) + "\n```"
             chart_df_out = top_df.sort_values("date")[["date", metric]]
             chart_metric_out = metric if metric in ["revenue", "cost", "profit"] else "revenue"
  
