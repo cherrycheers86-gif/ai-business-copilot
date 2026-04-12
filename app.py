@@ -337,4 +337,3 @@ st.session_state.messages.append({
     "chart_metric": chart_metric_out,
 })
 st.rerun()
-```
