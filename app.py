@@ -18,13 +18,13 @@ st.markdown("""
 *, *::before, *::after { box-sizing: border-box; }
  
 html, body, [data-testid="stAppViewContainer"] {
-    background: #0d0f14 !important;
+    background: #13151f !important;
     color: #e2e8f0 !important;
     font-family: 'Outfit', sans-serif !important;
 }
  
 [data-testid="stAppViewContainer"] {
-    background: linear-gradient(135deg, #0d0f14 0%, #111318 50%, #0d0f14 100%) !important;
+    background: linear-gradient(135deg, #13151f 0%, #181b26 50%, #13151f 100%) !important;
 }
  
 /* -- Hide Streamlit chrome -- */
@@ -33,8 +33,8 @@ html, body, [data-testid="stAppViewContainer"] {
  
 /* -- Sidebar -- */
 [data-testid="stSidebar"] {
-    background: #0a0c10 !important;
-    border-right: 1px solid rgba(99,102,241,0.15) !important;
+    background: #1a1d2e !important;
+    border-right: 1px solid rgba(99,102,241,0.35) !important;
 }
  
 [data-testid="stSidebar"] * {
@@ -103,8 +103,8 @@ h2, h3 {
  
 /* -- Metric cards -- */
 [data-testid="stMetric"] {
-    background: linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.02) 100%) !important;
-    border: 1px solid rgba(255,255,255,0.07) !important;
+    background: linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.05) 100%) !important;
+    border: 1px solid rgba(255,255,255,0.15) !important;
     border-radius: 16px !important;
     padding: 1.25rem 1.5rem !important;
     transition: transform 0.2s, border-color 0.2s !important;
@@ -118,7 +118,7 @@ h2, h3 {
 [data-testid="stMetricLabel"] {
     font-family: 'JetBrains Mono', monospace !important;
     font-size: 0.65rem !important;
-    color: #64748b !important;
+    color: #94a3b8 !important;
     text-transform: uppercase !important;
     letter-spacing: 0.1em !important;
 }
@@ -133,16 +133,16 @@ h2, h3 {
 /* -- Charts -- */
 [data-testid="stVegaLiteChart"],
 [data-testid="stArrowVegaLiteChart"] {
-    background: rgba(255,255,255,0.02) !important;
-    border: 1px solid rgba(255,255,255,0.06) !important;
+    background: rgba(255,255,255,0.04) !important;
+    border: 1px solid rgba(255,255,255,0.12) !important;
     border-radius: 16px !important;
     padding: 1rem !important;
 }
  
 /* -- Selectbox -- */
 [data-testid="stSelectbox"] > div > div {
-    background: rgba(255,255,255,0.04) !important;
-    border: 1px solid rgba(255,255,255,0.1) !important;
+    background: rgba(255,255,255,0.08) !important;
+    border: 1px solid rgba(255,255,255,0.2) !important;
     border-radius: 10px !important;
     color: #e2e8f0 !important;
     font-family: 'Outfit', sans-serif !important;
@@ -150,21 +150,21 @@ h2, h3 {
  
 /* -- Expander -- */
 [data-testid="stExpander"] {
-    background: rgba(255,255,255,0.02) !important;
-    border: 1px solid rgba(255,255,255,0.06) !important;
+    background: rgba(255,255,255,0.05) !important;
+    border: 1px solid rgba(255,255,255,0.12) !important;
     border-radius: 12px !important;
 }
  
 /* -- Divider -- */
 hr {
-    border-color: rgba(255,255,255,0.06) !important;
+    border-color: rgba(255,255,255,0.15) !important;
     margin: 1rem 0 !important;
 }
  
 /* -- File uploader -- */
 [data-testid="stFileUploader"] {
-    background: rgba(255,255,255,0.02) !important;
-    border: 1px dashed rgba(99,102,241,0.3) !important;
+    background: rgba(255,255,255,0.05) !important;
+    border: 1px dashed rgba(99,102,241,0.5) !important;
     border-radius: 12px !important;
     padding: 0.5rem !important;
 }
@@ -200,7 +200,7 @@ hr {
     bottom: 0;
     left: 0;
     right: 0;
-    background: linear-gradient(to top, #0d0f14 85%, transparent);
+    background: linear-gradient(to top, #13151f 85%, transparent);
     padding: 1rem 0 1.5rem 0;
     z-index: 100;
 }
@@ -249,8 +249,8 @@ hr {
  
 .msg-bot .bubble {
     max-width: 75%;
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.09);
+    background: rgba(255,255,255,0.09);
+    border: 1px solid rgba(255,255,255,0.18);
     color: #e2e8f0;
     border-radius: 4px 20px 20px 20px;
     padding: 0.75rem 1.1rem;
@@ -350,15 +350,15 @@ hr {
 .auth-card {
     max-width: 420px;
     margin: 5vh auto;
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.18);
     border-radius: 24px;
     padding: 2.5rem;
 }
  
 [data-testid="stTextInput"] input {
-    background: rgba(255,255,255,0.05) !important;
-    border: 1px solid rgba(255,255,255,0.1) !important;
+    background: rgba(255,255,255,0.08) !important;
+    border: 1px solid rgba(255,255,255,0.2) !important;
     border-radius: 10px !important;
     color: #e2e8f0 !important;
     font-family: 'Outfit', sans-serif !important;
@@ -414,7 +414,7 @@ hr {
     justify-content: center;
     height: 100%;
     min-height: 280px;
-    color: #334155;
+    color: #64748b;
     text-align: center;
     gap: 1rem;
 }
@@ -435,13 +435,13 @@ hr {
 .empty-chat-title {
     font-size: 1.05rem;
     font-weight: 600;
-    color: #475569;
+    color: #94a3b8;
     margin: 0;
 }
  
 .empty-chat-sub {
     font-size: 0.85rem;
-    color: #334155;
+    color: #64748b;
     max-width: 320px;
     line-height: 1.6;
     margin: 0;
@@ -456,8 +456,8 @@ hr {
 }
  
 .pill {
-    background: rgba(99,102,241,0.07);
-    border: 1px solid rgba(99,102,241,0.18);
+    background: rgba(99,102,241,0.15);
+    border: 1px solid rgba(99,102,241,0.35);
     color: #6366f1;
     border-radius: 20px;
     padding: 6px 14px;
@@ -492,13 +492,13 @@ hr {
 }
  
 .sidebar-stat {
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.15);
     border-radius: 10px;
     padding: 0.6rem 0.85rem;
     margin-bottom: 0.5rem;
     font-size: 0.78rem;
-    color: #64748b;
+    color: #94a3b8;
     font-family: 'JetBrains Mono', monospace;
 }
  
@@ -506,6 +506,42 @@ hr {
     color: #a5b4fc;
     font-weight: 500;
 }
+ 
+/* Force sidebar text to be clearly visible */
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] span,
+[data-testid="stSidebar"] div,
+[data-testid="stSidebar"] label {
+    color: #cbd5e1 !important;
+}
+ 
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
+    color: #cbd5e1 !important;
+}
+ 
+/* Sidebar always expanded */
+[data-testid="stSidebarNav"] { display: none; }
+section[data-testid="stSidebar"] { min-width: 240px !important; }
+ 
+/* Make sure all body text is visible */
+p, span, div, label {
+    color: #e2e8f0;
+}
+ 
+/* Stronger metric label color */
+[data-testid="stMetricLabel"] > div {
+    color: #94a3b8 !important;
+}
+ 
+/* Make sidebar stat box text fully visible */
+.sidebar-stat {
+    color: #94a3b8 !important;
+}
+ 
+.sidebar-sub {
+    color: #94a3b8 !important;
+}
+ 
 </style>
 """, unsafe_allow_html=True)
  
@@ -531,7 +567,7 @@ if st.session_state.page == "auth":
                 '<div style="font-family:Outfit,sans-serif;font-weight:800;font-size:2rem;'
                 'background:linear-gradient(135deg,#e2e8f0,#a5b4fc);-webkit-background-clip:text;'
                 '-webkit-text-fill-color:transparent;background-clip:text;">BizCopilot</div>'
-                '<div style="color:#475569;font-size:0.85rem;margin-top:4px;font-family:JetBrains Mono,monospace;">'
+                '<div style="color:#94a3b8;font-size:0.85rem;margin-top:4px;font-family:JetBrains Mono,monospace;">'
                 'AI-powered business intelligence</div></div>', unsafe_allow_html=True)
  
     col_l, col_m, col_r = st.columns([1, 1.2, 1])
@@ -567,7 +603,7 @@ if st.session_state.page == "onboarding":
     col_l, col_m, col_r = st.columns([1, 1.4, 1])
     with col_m:
         st.markdown('<div style="font-family:Outfit,sans-serif;font-weight:700;font-size:1.5rem;color:#e2e8f0;margin-bottom:0.5rem;">Tell us about your business</div>', unsafe_allow_html=True)
-        st.markdown('<div style="color:#64748b;font-size:0.875rem;margin-bottom:1.5rem;">We will personalize your dashboard and AI insights.</div>', unsafe_allow_html=True)
+        st.markdown('<div style="color:#94a3b8;font-size:0.875rem;margin-bottom:1.5rem;">We will personalize your dashboard and AI insights.</div>', unsafe_allow_html=True)
  
         industry = st.selectbox("Industry", ["Restaurant", "Retail", "Gas Station", "Services", "Other"])
         size = st.selectbox("Business Size", ["Small (1-10 employees)", "Medium (11-50)", "Large (50+)"])
@@ -825,7 +861,7 @@ with st.sidebar:
  
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown(
-        '<div style="font-size:0.7rem;color:#334155;font-family:JetBrains Mono,monospace;">'
+        '<div style="font-size:0.7rem;color:#94a3b8;font-family:JetBrains Mono,monospace;">'
         'Signed in as<br><span style="color:#6366f1;">' + user["name"] + '</span></div>',
         unsafe_allow_html=True
     )
@@ -836,8 +872,8 @@ if st.session_state.df is None:
     st.markdown(
         '<div style="text-align:center;padding:3rem;">'
         '<div style="font-size:3rem;margin-bottom:1rem;"></div>'
-        '<div style="font-family:Outfit,sans-serif;font-size:1.2rem;font-weight:600;color:#475569;margin-bottom:0.5rem;">No data loaded</div>'
-        '<div style="color:#334155;font-size:0.875rem;">Upload a CSV or use Sample Data from the sidebar to get started.</div>'
+        '<div style="font-family:Outfit,sans-serif;font-size:1.2rem;font-weight:600;color:#94a3b8;margin-bottom:0.5rem;">No data loaded</div>'
+        '<div style="color:#94a3b8;font-size:0.875rem;">Upload a CSV or use Sample Data from the sidebar to get started.</div>'
         '</div>',
         unsafe_allow_html=True
     )
@@ -848,7 +884,7 @@ df = st.session_state.df
 # -- Header -------------------------------------------------------
 st.markdown(
     '<h1>AI Business Copilot</h1>'
-    '<div style="color:#475569;font-size:0.875rem;margin-top:2px;margin-bottom:1.25rem;">'
+    '<div style="color:#94a3b8;font-size:0.875rem;margin-top:2px;margin-bottom:1.25rem;">'
     'Welcome back, <span style="color:#a5b4fc;font-weight:600;">' + user["name"] + '</span>'
     ' &nbsp;&bull;&nbsp; ' + business.get("name", "") + '</div>',
     unsafe_allow_html=True
