@@ -13,538 +13,119 @@ client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
- 
-/* -- Reset & Base -- */
-*, *::before, *::after { box-sizing: border-box; }
- 
+
+/* -- Base (WHITE THEME) -- */
 html, body, [data-testid="stAppViewContainer"] {
-    background: #13151f !important;
-    color: #e2e8f0 !important;
+    background: #ffffff !important;
+    color: #111827 !important;
     font-family: 'Outfit', sans-serif !important;
 }
- 
+
 [data-testid="stAppViewContainer"] {
-    background: linear-gradient(135deg, #13151f 0%, #181b26 50%, #13151f 100%) !important;
+    background: #ffffff !important;
 }
- 
-/* -- Hide Streamlit chrome -- */
+
+/* Hide streamlit chrome */
 #MainMenu, footer, header { visibility: hidden; }
-[data-testid="stDecoration"] { display: none; }
- 
-/* -- Sidebar -- */
+
+/* Sidebar */
 [data-testid="stSidebar"] {
-    background: #1a1d2e !important;
-    border-right: 1px solid rgba(99,102,241,0.35) !important;
+    background: #f9fafb !important;
+    border-right: 1px solid #e5e7eb !important;
 }
- 
-[data-testid="stSidebar"] * {
-    font-family: 'Outfit', sans-serif !important;
-}
- 
-[data-testid="stSidebar"] .stButton > button {
-    width: 100%;
-    background: rgba(99,102,241,0.1) !important;
-    border: 1px solid rgba(99,102,241,0.25) !important;
-    color: #a5b4fc !important;
-    border-radius: 10px !important;
-    font-family: 'Outfit', sans-serif !important;
-    font-weight: 500 !important;
-    transition: all 0.2s !important;
-    padding: 0.5rem 1rem !important;
-}
- 
-[data-testid="stSidebar"] .stButton > button:hover {
-    background: rgba(99,102,241,0.2) !important;
-    border-color: rgba(99,102,241,0.5) !important;
-    transform: translateY(-1px) !important;
-}
- 
-/* -- Main content area -- */
-[data-testid="stMain"] {
-    background: transparent !important;
-}
- 
-.block-container {
-    padding: 2rem 2.5rem 0 2.5rem !important;
-    max-width: 100% !important;
-}
- 
-/* -- Title -- */
+
+/* Titles */
 h1 {
-    font-family: 'Outfit', sans-serif !important;
     font-weight: 800 !important;
     font-size: 1.9rem !important;
-    background: linear-gradient(135deg, #e2e8f0 0%, #a5b4fc 100%) !important;
-    -webkit-background-clip: text !important;
-    -webkit-text-fill-color: transparent !important;
-    background-clip: text !important;
-    margin-bottom: 0 !important;
-    letter-spacing: -0.5px !important;
+    color: #111827 !important;
 }
- 
+
 h2, h3 {
-    font-family: 'Outfit', sans-serif !important;
     font-weight: 600 !important;
-    color: #cbd5e1 !important;
+    color: #374151 !important;
     font-size: 1rem !important;
-    letter-spacing: 0.05em !important;
     text-transform: uppercase !important;
 }
- 
-/* -- Success / info banners -- */
-[data-testid="stAlert"] {
-    background: rgba(99,102,241,0.08) !important;
-    border: 1px solid rgba(99,102,241,0.2) !important;
-    border-radius: 12px !important;
-    color: #a5b4fc !important;
-    font-family: 'Outfit', sans-serif !important;
-    font-size: 0.875rem !important;
-}
- 
-/* -- Metric cards -- */
+
+/* Metrics */
 [data-testid="stMetric"] {
-    background: linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.05) 100%) !important;
-    border: 1px solid rgba(255,255,255,0.15) !important;
-    border-radius: 16px !important;
-    padding: 1.25rem 1.5rem !important;
-    transition: transform 0.2s, border-color 0.2s !important;
-}
- 
-[data-testid="stMetric"]:hover {
-    transform: translateY(-2px) !important;
-    border-color: rgba(99,102,241,0.3) !important;
-}
- 
-[data-testid="stMetricLabel"] {
-    font-family: 'JetBrains Mono', monospace !important;
-    font-size: 0.65rem !important;
-    color: #94a3b8 !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.1em !important;
-}
- 
-[data-testid="stMetricValue"] {
-    font-family: 'Outfit', sans-serif !important;
-    font-weight: 700 !important;
-    font-size: 1.6rem !important;
-    color: #f1f5f9 !important;
-}
- 
-/* -- Charts -- */
-[data-testid="stVegaLiteChart"],
-[data-testid="stArrowVegaLiteChart"] {
-    background: rgba(255,255,255,0.04) !important;
-    border: 1px solid rgba(255,255,255,0.12) !important;
-    border-radius: 16px !important;
+    background: #ffffff !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 12px !important;
     padding: 1rem !important;
 }
- 
-/* -- Selectbox -- */
+
+[data-testid="stMetricValue"] {
+    color: #111827 !important;
+}
+
+/* Charts */
+[data-testid="stVegaLiteChart"] {
+    background: #ffffff !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 12px !important;
+    padding: 1rem !important;
+}
+
+/* Select box */
 [data-testid="stSelectbox"] > div > div {
-    background: rgba(255,255,255,0.08) !important;
-    border: 1px solid rgba(255,255,255,0.2) !important;
-    border-radius: 10px !important;
-    color: #e2e8f0 !important;
-    font-family: 'Outfit', sans-serif !important;
+    background: #ffffff !important;
+    border: 1px solid #d1d5db !important;
+    color: #111827 !important;
 }
- 
-/* -- Expander -- */
+
+/* Expander */
 [data-testid="stExpander"] {
-    background: rgba(255,255,255,0.05) !important;
-    border: 1px solid rgba(255,255,255,0.12) !important;
-    border-radius: 12px !important;
+    background: #ffffff !important;
+    border: 1px solid #e5e7eb !important;
 }
- 
-/* -- Divider -- */
-hr {
-    border-color: rgba(255,255,255,0.15) !important;
-    margin: 1rem 0 !important;
-}
- 
-/* -- File uploader -- */
+
+/* File uploader */
 [data-testid="stFileUploader"] {
-    background: rgba(255,255,255,0.05) !important;
-    border: 1px dashed rgba(99,102,241,0.5) !important;
-    border-radius: 12px !important;
-    padding: 0.5rem !important;
+    background: #ffffff !important;
+    border: 1px dashed #6366f1 !important;
 }
- 
-/* ================================================================
-   CHAT LAYOUT - ChatGPT / Claude style
-   ================================================================ */
- 
-/* The chat messages scroll area */
-.chat-scroll-area {
-    height: calc(100vh - 340px);
-    overflow-y: auto;
-    padding: 1rem 0 1.5rem 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(99,102,241,0.3) transparent;
-}
- 
-.chat-scroll-area::-webkit-scrollbar {
-    width: 4px;
-}
- 
-.chat-scroll-area::-webkit-scrollbar-thumb {
-    background: rgba(99,102,241,0.3);
-    border-radius: 4px;
-}
- 
-/* Sticky input container pinned to bottom */
-.chat-input-sticky {
-    position: sticky;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: linear-gradient(to top, #13151f 85%, transparent);
-    padding: 1rem 0 1.5rem 0;
-    z-index: 100;
-}
- 
+
 /* Chat bubbles */
-.msg-user {
-    display: flex;
-    justify-content: flex-end;
-    margin-bottom: 0.75rem;
-    animation: slideUp 0.25s ease;
-}
- 
 .msg-user .bubble {
-    max-width: 70%;
-    background: linear-gradient(135deg, #4f46e5, #7c3aed);
-    color: #fff;
-    border-radius: 20px 20px 4px 20px;
-    padding: 0.75rem 1.1rem;
-    font-size: 0.925rem;
-    line-height: 1.6;
-    box-shadow: 0 4px 20px rgba(99,102,241,0.25);
-}
- 
-.msg-bot {
-    display: flex;
-    justify-content: flex-start;
-    margin-bottom: 0.75rem;
-    gap: 0.6rem;
-    align-items: flex-start;
-    animation: slideUp 0.25s ease;
-}
- 
-.bot-avatar {
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #0ea5e9, #6366f1);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.75rem;
-    flex-shrink: 0;
-    margin-top: 2px;
-    box-shadow: 0 2px 10px rgba(99,102,241,0.3);
-}
- 
-.msg-bot .bubble {
-    max-width: 75%;
-    background: rgba(255,255,255,0.09);
-    border: 1px solid rgba(255,255,255,0.18);
-    color: #e2e8f0;
-    border-radius: 4px 20px 20px 20px;
-    padding: 0.75rem 1.1rem;
-    font-size: 0.925rem;
-    line-height: 1.7;
-}
- 
-.msg-bot .bubble pre {
-    background: rgba(0,0,0,0.3);
-    border-radius: 8px;
-    padding: 0.75rem;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.8rem;
-    overflow-x: auto;
-    margin: 0.5rem 0 0 0;
-    border: 1px solid rgba(255,255,255,0.08);
-}
- 
-.msg-bot .bubble code {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.85rem;
-    color: #a5b4fc;
-    background: rgba(99,102,241,0.12);
-    padding: 0.1rem 0.4rem;
-    border-radius: 4px;
-}
- 
-/* Typing indicator */
-.typing-indicator {
-    display: flex;
-    gap: 4px;
-    align-items: center;
-    padding: 0.5rem 0;
-}
- 
-.typing-indicator span {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
     background: #6366f1;
-    animation: typingBounce 1.2s infinite ease-in-out;
+    color: white;
 }
- 
-.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
-.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
- 
-@keyframes typingBounce {
-    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-    30% { transform: translateY(-6px); opacity: 1; }
+
+.msg-bot .bubble {
+    background: #f3f4f6;
+    border: 1px solid #e5e7eb;
+    color: #111827;
 }
- 
-@keyframes slideUp {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
- 
-/* -- Streamlit chat input override -- */
+
+/* Chat input */
 [data-testid="stChatInput"] {
-    background: rgba(255,255,255,0.04) !important;
-    border: 1px solid rgba(99,102,241,0.3) !important;
-    border-radius: 16px !important;
-    box-shadow: 0 0 0 0 rgba(99,102,241,0) !important;
-    transition: border-color 0.2s, box-shadow 0.2s !important;
+    background: #ffffff !important;
+    border: 1px solid #d1d5db !important;
 }
- 
-[data-testid="stChatInput"]:focus-within {
-    border-color: rgba(99,102,241,0.6) !important;
-    box-shadow: 0 0 0 3px rgba(99,102,241,0.12) !important;
-}
- 
+
 [data-testid="stChatInput"] textarea {
-    font-family: 'Outfit', sans-serif !important;
-    font-size: 0.95rem !important;
-    color: #e2e8f0 !important;
-    background: transparent !important;
+    color: #111827 !important;
 }
- 
-[data-testid="stChatInput"] textarea::placeholder {
-    color: #475569 !important;
-}
- 
+
 [data-testid="stChatInput"] button {
-    background: linear-gradient(135deg, #4f46e5, #7c3aed) !important;
-    border-radius: 10px !important;
-    border: none !important;
+    background: #6366f1 !important;
     color: white !important;
 }
- 
-/* -- Chat message overrides (streamlit native) -- */
-[data-testid="stChatMessage"] {
-    background: transparent !important;
-    border: none !important;
-    padding: 0 !important;
+
+/* Sticky input fix */
+.chat-input-sticky {
+    background: linear-gradient(to top, #ffffff 85%, transparent);
 }
- 
-/* -- Auth / Onboarding forms -- */
-.auth-card {
-    max-width: 420px;
-    margin: 5vh auto;
-    background: rgba(255,255,255,0.07);
-    border: 1px solid rgba(255,255,255,0.18);
-    border-radius: 24px;
-    padding: 2.5rem;
-}
- 
-[data-testid="stTextInput"] input {
-    background: rgba(255,255,255,0.08) !important;
-    border: 1px solid rgba(255,255,255,0.2) !important;
-    border-radius: 10px !important;
-    color: #e2e8f0 !important;
-    font-family: 'Outfit', sans-serif !important;
-}
- 
-[data-testid="stTextInput"] input:focus {
-    border-color: rgba(99,102,241,0.5) !important;
-    box-shadow: 0 0 0 3px rgba(99,102,241,0.1) !important;
-}
- 
-.stRadio label {
-    color: #94a3b8 !important;
-    font-family: 'Outfit', sans-serif !important;
-}
- 
-/* Primary buttons */
-.stButton > button[kind="primary"],
-.stButton > button {
-    background: linear-gradient(135deg, #4f46e5, #7c3aed) !important;
-    border: none !important;
-    border-radius: 10px !important;
-    color: white !important;
-    font-family: 'Outfit', sans-serif !important;
-    font-weight: 600 !important;
-    transition: opacity 0.2s, transform 0.2s !important;
-}
- 
-.stButton > button:hover {
-    opacity: 0.9 !important;
-    transform: translateY(-1px) !important;
-}
- 
-/* Sidebar specific buttons keep their style */
-[data-testid="stSidebar"] .stButton > button {
-    background: rgba(99,102,241,0.1) !important;
-    border: 1px solid rgba(99,102,241,0.25) !important;
-    color: #a5b4fc !important;
-}
- 
-/* Tag chips for onboarding */
-.chip-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 1rem;
-}
- 
-/* Empty state */
-.empty-chat {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    min-height: 280px;
-    color: #64748b;
-    text-align: center;
-    gap: 1rem;
-}
- 
-.empty-chat-icon {
-    width: 64px;
-    height: 64px;
-    border-radius: 50%;
-    background: rgba(99,102,241,0.08);
-    border: 1px solid rgba(99,102,241,0.15);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.6rem;
-    margin: 0 auto;
-}
- 
-.empty-chat-title {
-    font-size: 1.05rem;
-    font-weight: 600;
-    color: #94a3b8;
-    margin: 0;
-}
- 
-.empty-chat-sub {
-    font-size: 0.85rem;
-    color: #64748b;
-    max-width: 320px;
-    line-height: 1.6;
-    margin: 0;
-}
- 
-.pill-grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    justify-content: center;
-    max-width: 440px;
-}
- 
-.pill {
-    background: rgba(99,102,241,0.15);
-    border: 1px solid rgba(99,102,241,0.35);
-    color: #6366f1;
-    border-radius: 20px;
-    padding: 6px 14px;
-    font-size: 0.8rem;
-    font-family: 'Outfit', sans-serif;
-    cursor: pointer;
-    transition: all 0.15s;
-}
- 
-.pill:hover {
-    background: rgba(99,102,241,0.15);
-    color: #a5b4fc;
-}
- 
-/* Sidebar logo */
-.sidebar-logo {
-    font-family: 'Outfit', sans-serif;
-    font-weight: 800;
-    font-size: 1.3rem;
-    background: linear-gradient(135deg, #e2e8f0, #a5b4fc);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    margin-bottom: 0.25rem;
-}
- 
-.sidebar-sub {
-    font-size: 0.7rem;
-    color: #475569;
-    font-family: 'JetBrains Mono', monospace;
-    margin-bottom: 1.5rem;
-}
- 
-.sidebar-stat {
-    background: rgba(255,255,255,0.07);
-    border: 1px solid rgba(255,255,255,0.15);
-    border-radius: 10px;
-    padding: 0.6rem 0.85rem;
-    margin-bottom: 0.5rem;
-    font-size: 0.78rem;
-    color: #94a3b8;
-    font-family: 'JetBrains Mono', monospace;
-}
- 
-.sidebar-stat span {
-    color: #a5b4fc;
-    font-weight: 500;
-}
- 
-/* Force sidebar text to be clearly visible */
-[data-testid="stSidebar"] p,
-[data-testid="stSidebar"] span,
-[data-testid="stSidebar"] div,
-[data-testid="stSidebar"] label {
-    color: #cbd5e1 !important;
-}
- 
-[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
-    color: #cbd5e1 !important;
-}
- 
-/* Sidebar always expanded */
-[data-testid="stSidebarNav"] { display: none; }
-section[data-testid="stSidebar"] { min-width: 240px !important; }
- 
-/* Make sure all body text is visible */
+
+/* General text */
 p, span, div, label {
-    color: #e2e8f0;
+    color: #111827 !important;
 }
- 
-/* Stronger metric label color */
-[data-testid="stMetricLabel"] > div {
-    color: #94a3b8 !important;
-}
- 
-/* Make sidebar stat box text fully visible */
-.sidebar-stat {
-    color: #94a3b8 !important;
-}
- 
-.sidebar-sub {
-    color: #94a3b8 !important;
-}
- 
+
 </style>
 """, unsafe_allow_html=True)
- 
 # ================================================================
 # SESSION DEFAULTS
 # ================================================================
