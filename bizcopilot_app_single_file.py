@@ -10,54 +10,69 @@ import json
 import re
 from typing import Any
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 from groq import Groq
 
+
+def _safe_int(val: Any, default: int) -> int:
+    if val is None:
+        return default
+    if isinstance(val, bool):
+        return default
+    if isinstance(val, int):
+        return val
+    if isinstance(val, float):
+        return int(val)
+    if isinstance(val, str) and val.strip():
+        try:
+            return int(float(val.strip()))
+        except ValueError:
+            return default
+    return default
+
+
 # =============================================================================
-# UI (CSS)
+# UI (CSS) — dark analytics shell, distinct from prior cream/teal theme
 # =============================================================================
 STYLES = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800;900&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after { box-sizing: border-box; }
 
 :root {
-  --cream:   #FAF7F2;
-  --sand:    #F0EBE1;
-  --linen:   #E8E0D0;
-  --stone:   #C4BAA8;
-  --ink:     #1C1917;
-  --ink-mid: #44403C;
-  --ink-soft:#78716C;
-  --teal:    #0D9488;
-  --teal-lt: #14B8A6;
-  --amber:   #D97706;
-  --rose:    #E11D48;
-  --card-bg: rgba(255,255,255,0.82);
-  --border:  rgba(196,186,168,0.55);
-  --shadow:  0 4px 24px rgba(28,25,23,0.08);
-  --shadow-lg: 0 12px 48px rgba(28,25,23,0.13);
-  --radius:  20px;
-  --font-display: 'Playfair Display', serif;
-  --font-body:    'DM Sans', sans-serif;
-  --font-mono:    'DM Mono', monospace;
+  --bg0:      #07080d;
+  --bg1:      #0e1118;
+  --bg2:      #151a24;
+  --stroke:   rgba(148, 163, 184, 0.18);
+  --text:     #e8edf7;
+  --muted:    #94a3b8;
+  --accent:   #38bdf8;
+  --accent2:  #a78bfa;
+  --good:     #34d399;
+  --warn:     #fbbf24;
+  --danger:   #fb7185;
+  --radius:   16px;
+  --radius-lg: 22px;
+  --font:     'Outfit', system-ui, sans-serif;
+  --mono:     'IBM Plex Mono', ui-monospace, monospace;
 }
 
 html, body, [data-testid="stAppViewContainer"] {
-  background: var(--cream) !important;
-  color: var(--ink) !important;
-  font-family: var(--font-body) !important;
+  background: var(--bg0) !important;
+  color: var(--text) !important;
+  font-family: var(--font) !important;
 }
 
 [data-testid="stAppViewContainer"]::before {
   content: '';
   position: fixed; inset: 0;
   background:
-    radial-gradient(ellipse 80% 60% at 10% 0%,  rgba(13,148,136,0.08) 0%, transparent 60%),
-    radial-gradient(ellipse 60% 50% at 90% 100%, rgba(217,119,6,0.07)  0%, transparent 60%),
-    radial-gradient(ellipse 50% 40% at 50% 50%,  rgba(225,29,72,0.03)  0%, transparent 70%);
+    radial-gradient(ellipse 90% 70% at 0% -10%, rgba(56, 189, 248, 0.14) 0%, transparent 55%),
+    radial-gradient(ellipse 70% 60% at 100% 0%, rgba(167, 139, 250, 0.12) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 50% at 80% 100%, rgba(52, 211, 153, 0.06) 0%, transparent 45%);
   pointer-events: none; z-index: 0;
 }
 
@@ -65,154 +80,217 @@ html, body, [data-testid="stAppViewContainer"] {
 #MainMenu, footer, header { visibility: hidden; }
 [data-testid="stDecoration"] { display: none; }
 
-.block-container { padding: 2rem 2.5rem 0 2.5rem !important; max-width: 100% !important; }
+.block-container {
+  padding: 1.75rem 2rem 2rem 2rem !important;
+  max-width: 1280px !important;
+}
 
 [data-testid="stSidebar"] {
-  background: rgba(240,235,225,0.92) !important;
-  backdrop-filter: blur(20px) !important;
-  border-right: 1.5px solid var(--border) !important;
+  background: linear-gradient(180deg, #0a0c12 0%, #0f1219 100%) !important;
+  border-right: 1px solid var(--stroke) !important;
 }
 [data-testid="stSidebarNav"] { display: none; }
-section[data-testid="stSidebar"] { min-width: 250px !important; }
-[data-testid="stSidebar"] * { font-family: var(--font-body) !important; }
+section[data-testid="stSidebar"] { min-width: 270px !important; }
+
 [data-testid="stSidebar"] p,
 [data-testid="stSidebar"] span,
 [data-testid="stSidebar"] div,
-[data-testid="stSidebar"] label { color: var(--ink-mid) !important; }
+[data-testid="stSidebar"] label { color: var(--muted) !important; }
 
 [data-testid="stSidebar"] .stButton > button {
   width: 100%;
-  background: rgba(13,148,136,0.08) !important;
-  border: 1px solid rgba(13,148,136,0.3) !important;
-  color: var(--teal) !important;
+  background: rgba(56, 189, 248, 0.08) !important;
+  border: 1px solid rgba(56, 189, 248, 0.28) !important;
+  color: var(--accent) !important;
   border-radius: 12px !important;
-  font-weight: 500 !important;
-  font-size: 0.875rem !important;
-  transition: all 0.2s ease !important;
-  padding: 0.55rem 1rem !important;
+  font-weight: 600 !important;
+  font-size: 0.8125rem !important;
+  padding: 0.5rem 0.9rem !important;
 }
 
 h1 {
-  font-family: var(--font-display) !important;
-  font-weight: 800 !important; font-size: 2rem !important;
-  color: var(--ink) !important; letter-spacing: -0.03em !important;
-}
-h2, h3 {
-  font-family: var(--font-body) !important; font-weight: 600 !important;
-  color: var(--ink-soft) !important; font-size: 0.7rem !important;
-  letter-spacing: 0.12em !important; text-transform: uppercase !important;
+  font-family: var(--font) !important;
+  font-weight: 800 !important;
+  font-size: 1.85rem !important;
+  letter-spacing: -0.03em !important;
+  color: var(--text) !important;
+  background: linear-gradient(90deg, #f8fafc, #94a3b8);
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
 }
 
 [data-testid="stMetric"] {
-  background: var(--card-bg) !important;
-  border: 1px solid var(--border) !important;
+  background: linear-gradient(145deg, rgba(21, 26, 36, 0.95), rgba(14, 17, 24, 0.85)) !important;
+  border: 1px solid var(--stroke) !important;
   border-radius: var(--radius) !important;
-  padding: 1.4rem 1.6rem !important;
-  box-shadow: var(--shadow) !important;
-  backdrop-filter: blur(12px) !important;
+  padding: 1.1rem 1.25rem !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.35) !important;
+}
+[data-testid="stMetricLabel"] { color: var(--muted) !important; font-family: var(--mono) !important; font-size: 0.65rem !important; letter-spacing: 0.08em !important; text-transform: uppercase !important; }
+[data-testid="stMetricValue"] { color: var(--text) !important; font-weight: 700 !important; font-size: 1.45rem !important; }
+
+[data-testid="stTabs"] { margin-top: 0.25rem; }
+[data-testid="stTabs"] [data-baseweb="tab-list"] {
+  background: rgba(14, 17, 24, 0.6) !important;
+  border: 1px solid var(--stroke) !important;
+  border-radius: 14px !important;
+  padding: 4px !important;
+  gap: 4px !important;
+}
+[data-testid="stTabs"] button[data-baseweb="tab"] {
+  border-radius: 10px !important;
+  color: var(--muted) !important;
+  font-weight: 600 !important;
+  font-size: 0.875rem !important;
+}
+[data-testid="stTabs"] [aria-selected="true"] {
+  background: linear-gradient(135deg, rgba(56,189,248,0.2), rgba(167,139,250,0.15)) !important;
+  color: var(--text) !important;
 }
 
 [data-testid="stVegaLiteChart"],
 [data-testid="stArrowVegaLiteChart"] {
-  background: var(--card-bg) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: var(--radius) !important;
-  padding: 1.25rem !important;
-  box-shadow: var(--shadow) !important;
+  background: rgba(14, 17, 24, 0.5) !important;
+  border: 1px solid var(--stroke) !important;
+  border-radius: var(--radius-lg) !important;
+  padding: 1rem !important;
 }
 
-[data-testid="stSelectbox"] > div > div {
-  background: var(--card-bg) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: 12px !important;
+[data-testid="stSelectbox"] > div > div,
+[data-testid="stTextInput"] input,
+[data-testid="stChatInput"] {
+  background: var(--bg2) !important;
+  border: 1px solid var(--stroke) !important;
+  border-radius: 14px !important;
+  color: var(--text) !important;
 }
 
 [data-testid="stExpander"] {
-  background: var(--card-bg) !important;
-  border: 1px solid var(--border) !important;
+  background: rgba(14, 17, 24, 0.45) !important;
+  border: 1px solid var(--stroke) !important;
   border-radius: var(--radius) !important;
 }
 
-hr { border-color: var(--linen) !important; margin: 1.25rem 0 !important; }
+hr { border-color: var(--stroke) !important; opacity: 1 !important; margin: 1.5rem 0 !important; }
 
 [data-testid="stFileUploader"] {
-  background: rgba(255,255,255,0.6) !important;
-  border: 1.5px dashed rgba(13,148,136,0.4) !important;
+  background: rgba(21, 26, 36, 0.5) !important;
+  border: 1px dashed rgba(56, 189, 248, 0.35) !important;
   border-radius: 14px !important;
 }
 
-.stButton > button {
-  background: linear-gradient(135deg, var(--teal) 0%, #0A7C72 100%) !important;
-  border: none !important; border-radius: 12px !important;
-  color: #fff !important; font-weight: 600 !important;
+.stButton > button[kind="primary"] {
+  background: linear-gradient(135deg, #0ea5e9, #6366f1) !important;
+  border: none !important;
+  border-radius: 12px !important;
+  font-weight: 600 !important;
+  box-shadow: 0 6px 24px rgba(14, 165, 233, 0.25) !important;
+}
+
+div[data-testid="stAlert"] {
+  background: rgba(56, 189, 248, 0.08) !important;
+  border: 1px solid rgba(56, 189, 248, 0.25) !important;
+  border-radius: 12px !important;
 }
 
 .chat-input-sticky {
   position: sticky; bottom: 0; left: 0; right: 0;
-  background: linear-gradient(to top, var(--cream) 80%, transparent);
-  padding: 1rem 0 1.5rem 0; z-index: 100;
+  background: linear-gradient(to top, var(--bg0) 70%, transparent);
+  padding: 0.75rem 0 1rem 0; z-index: 50;
 }
 
 .msg-user { display: flex; justify-content: flex-end; margin-bottom: 1rem; }
 .msg-user .bubble {
-  max-width: 68%;
-  background: linear-gradient(135deg, var(--teal) 0%, #0A7C72 100%);
-  color: #fff; border-radius: 22px 22px 5px 22px;
-  padding: 0.85rem 1.2rem; font-size: 0.92rem; line-height: 1.65;
+  max-width: 78%;
+  background: linear-gradient(135deg, #0ea5e9, #6366f1);
+  color: #fff;
+  border-radius: 20px 20px 6px 20px;
+  padding: 0.8rem 1.1rem;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  box-shadow: 0 10px 40px rgba(99, 102, 241, 0.22);
 }
 .msg-bot {
   display: flex; justify-content: flex-start;
-  margin-bottom: 1rem; gap: 0.7rem; align-items: flex-start;
+  margin-bottom: 1rem; gap: 0.65rem; align-items: flex-start;
 }
 .bot-avatar {
-  width: 34px; height: 34px; border-radius: 50%;
-  background: linear-gradient(135deg, var(--teal), var(--amber));
+  width: 36px; height: 36px; border-radius: 10px;
+  background: linear-gradient(135deg, rgba(56,189,248,0.25), rgba(167,139,250,0.25));
+  border: 1px solid var(--stroke);
   display: flex; align-items: center; justify-content: center;
-  font-size: 0.7rem; font-weight: 700; color: white; font-family: var(--font-mono);
+  font-size: 0.65rem; font-weight: 700; color: var(--accent);
+  font-family: var(--mono);
+  flex-shrink: 0;
 }
 .msg-bot .bubble {
-  max-width: 74%; background: var(--card-bg);
-  border: 1px solid var(--border); color: var(--ink);
-  border-radius: 5px 22px 22px 22px;
-  padding: 0.85rem 1.2rem; font-size: 0.92rem; line-height: 1.75;
-}
-
-[data-testid="stChatInput"] {
-  background: var(--card-bg) !important;
-  border: 1.5px solid var(--border) !important;
-  border-radius: 18px !important;
+  max-width: 82%;
+  background: rgba(21, 26, 36, 0.85);
+  border: 1px solid var(--stroke);
+  color: var(--text);
+  border-radius: 8px 20px 20px 20px;
+  padding: 0.85rem 1.15rem;
+  font-size: 0.9rem;
+  line-height: 1.65;
 }
 
 .section-label {
-  font-size: 0.65rem; font-family: var(--font-mono); color: var(--ink-soft);
-  text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 0.75rem;
-  display: flex; align-items: center; gap: 8px;
+  font-size: 0.62rem; font-family: var(--mono); color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.16em; margin: 0.5rem 0 0.85rem 0;
+  display: flex; align-items: center; gap: 10px;
 }
-.section-label::after { content: ''; flex: 1; height: 1px; background: var(--linen); }
+.section-label::after { content: ''; flex: 1; height: 1px; background: var(--stroke); }
 
-.sidebar-logo { font-family: var(--font-display); font-weight: 800; font-size: 1.4rem; color: var(--ink); }
-.sidebar-sub { font-size: 0.68rem; color: var(--ink-soft) !important; font-family: var(--font-mono); }
+.hero-strip {
+  display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between;
+  gap: 1rem; margin-bottom: 1.25rem;
+}
+.hero-kicker { font-family: var(--mono); font-size: 0.65rem; letter-spacing: 0.2em; color: var(--muted); text-transform: uppercase; }
+.hero-title { font-size: 1.35rem; font-weight: 700; color: var(--text); letter-spacing: -0.02em; margin-top: 0.25rem; }
+.hero-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 14px; border-radius: 999px;
+  font-family: var(--mono); font-size: 0.7rem; color: var(--good);
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  background: rgba(52, 211, 153, 0.08);
+}
+
+.sidebar-logo { font-family: var(--font); font-weight: 800; font-size: 1.35rem; color: var(--text); letter-spacing: -0.03em; }
+.sidebar-logo span { color: var(--accent); }
+.sidebar-sub { font-size: 0.68rem; color: var(--muted) !important; font-family: var(--mono); letter-spacing: 0.04em; }
 .sidebar-stat {
-  background: rgba(255,255,255,0.65); border: 1px solid var(--border);
-  border-radius: 12px; padding: 0.65rem 0.9rem; margin-bottom: 0.5rem;
-  font-size: 0.75rem; color: var(--ink-soft) !important; font-family: var(--font-mono);
+  background: rgba(21, 26, 36, 0.65); border: 1px solid var(--stroke);
+  border-radius: 12px; padding: 0.6rem 0.85rem; margin-bottom: 0.45rem;
+  font-size: 0.72rem; color: var(--muted) !important; font-family: var(--mono);
 }
-.sidebar-stat span { color: var(--teal); font-weight: 600; }
+.sidebar-stat span { color: var(--accent); font-weight: 600; }
 
-.ai-section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 1rem; }
-.ai-orb {
-  width: 28px; height: 28px; border-radius: 50%;
-  background: linear-gradient(135deg, var(--teal), var(--amber));
+.ai-panel-head {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;
+  margin-bottom: 1rem;
 }
-.ai-section-title { font-family: var(--font-display); font-weight: 700; font-size: 1.1rem; color: var(--ink); }
+.ai-panel-title { font-weight: 700; font-size: 1.05rem; color: var(--text); }
+.ai-panel-meta { font-family: var(--mono); font-size: 0.68rem; color: var(--muted); }
 
-.onboard-title { font-family: var(--font-display); font-weight: 800; font-size: 1.7rem; color: var(--ink); }
-.onboard-sub { color: var(--ink-soft); font-size: 0.875rem; margin-bottom: 1.75rem; }
+.onboard-title { font-family: var(--font); font-weight: 800; font-size: 1.65rem; color: var(--text); letter-spacing: -0.03em; }
+.onboard-sub { color: var(--muted); font-size: 0.875rem; margin-bottom: 1.5rem; }
 
-.auth-logo { font-family: var(--font-display); font-weight: 900; font-size: 2.4rem; color: var(--ink); }
-.auth-tagline { font-size: 0.8rem; color: var(--ink-soft); font-family: var(--font-mono); }
+.auth-wrap { max-width: 420px; margin: 0 auto; padding: 2.5rem 0 2rem 0; }
+.auth-logo { font-family: var(--font); font-weight: 800; font-size: 2.25rem; color: var(--text); letter-spacing: -0.04em; text-align: center; }
+.auth-logo span { color: var(--accent); }
+.auth-tagline { font-size: 0.78rem; color: var(--muted); font-family: var(--mono); text-align: center; margin-top: 0.35rem; letter-spacing: 0.06em; }
 
-p, span, div, label { color: var(--ink); }
+.card-surface {
+  background: linear-gradient(160deg, rgba(21,26,36,0.9), rgba(14,17,24,0.75));
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem 1.35rem;
+  margin-bottom: 1rem;
+}
+
+p, span, div, label { color: inherit; }
+[data-testid="stMarkdownContainer"] p { color: var(--muted); }
 </style>
 """
 
@@ -340,13 +418,30 @@ def _metric_series(df: pd.DataFrame, metric: str) -> pd.Series:
 def analytics_tool_run(df: pd.DataFrame, arguments: dict[str, Any]) -> str:
     op = arguments.get("operation")
     metric = arguments.get("metric", "revenue")
-    year = arguments.get("year")
-    month = arguments.get("month")
+    raw_year = arguments.get("year")
+    raw_month = arguments.get("month")
+    year = _safe_int(raw_year, 0) if raw_year not in (None, "", False) else None
+    if year is not None and year < 1900:
+        year = None
+    month = _safe_int(raw_month, 0) if raw_month not in (None, "", False) else None
+    if month is not None and not (1 <= month <= 12):
+        month = None
     date_after = arguments.get("date_after")
     date_before = arguments.get("date_before")
-    top_n = int(arguments.get("top_n", 5))
+    top_n = max(1, min(_safe_int(arguments.get("top_n"), 5), 60))
     month_a = arguments.get("month_a")
     month_b = arguments.get("month_b")
+
+    def _month_num(val: Any) -> int | None:
+        if val in (None, "", False):
+            return None
+        n = _safe_int(val, -1)
+        if 1 <= n <= 12:
+            return n
+        return None
+
+    month_a_i = _month_num(month_a)
+    month_b_i = _month_num(month_b)
 
     try:
         subset = _slice_df(df, year=year, month=month, date_after=date_after, date_before=date_before)
@@ -417,8 +512,16 @@ def analytics_tool_run(df: pd.DataFrame, arguments: dict[str, Any]) -> str:
                 rows.append({"date": str(r["date"].date()), metric: float(r[metric])})
             return json.dumps({"ok": True, "operation": op, "metric": metric, "top": rows})
 
+        if op == "bottom_days":
+            s = _metric_series(subset, metric)
+            bot = subset.assign(_m=s).nsmallest(top_n, "_m")
+            rows = []
+            for _, r in bot.iterrows():
+                rows.append({"date": str(r["date"].date()), metric: float(r[metric])})
+            return json.dumps({"ok": True, "operation": op, "metric": metric, "bottom": rows})
+
         if op == "compare_months":
-            if month_a is None or month_b is None:
+            if month_a_i is None or month_b_i is None:
                 return json.dumps({"ok": False, "reason": "month_a_and_month_b_required"})
             full = ensure_derived_columns(df).dropna(subset=["date"])
             if year is not None:
@@ -430,7 +533,7 @@ def analytics_tool_run(df: pd.DataFrame, arguments: dict[str, Any]) -> str:
                 "year_filter": year,
                 "months": {},
             }
-            for label, m in [("a", month_a), ("b", month_b)]:
+            for label, m in [("a", month_a_i), ("b", month_b_i)]:
                 md = full[full["date"].dt.month == int(m)]
                 if md.empty:
                     out["months"][label] = {"month": int(m), "empty": True}
@@ -447,7 +550,7 @@ def analytics_tool_run(df: pd.DataFrame, arguments: dict[str, Any]) -> str:
             return json.dumps(out)
 
         if op == "rolling_average_profit":
-            window = int(arguments.get("window", 7))
+            window = _safe_int(arguments.get("window"), 7)
             w = max(1, min(window, 90))
             sub = subset.sort_values("date")
             if "profit" not in sub.columns:
@@ -479,9 +582,10 @@ ANALYTICS_TOOL_DEFINITION: dict[str, Any] = {
         "name": "run_business_analytics",
         "description": (
             "Compute exact numbers from the user's uploaded daily business dataset. "
-            "Call this whenever the user asks for totals, averages, min/max, top days, "
-            "month comparisons, rolling averages, or filtered periods. "
-            "Do not guess or mentally calculate; always use this tool for numeric facts."
+            "Use top_days for 'highest/best/top N days' and bottom_days for 'lowest/worst/smallest N days'. "
+            "Use min for a single minimum value; use bottom_days for a ranked list. "
+            "For month filters use month 1-12 and optional year. "
+            "Do not guess; always use this tool for numeric facts."
         ),
         "parameters": {
             "type": "object",
@@ -495,6 +599,7 @@ ANALYTICS_TOOL_DEFINITION: dict[str, Any] = {
                         "max",
                         "min",
                         "top_days",
+                        "bottom_days",
                         "compare_months",
                         "rolling_average_profit",
                     ],
@@ -509,7 +614,10 @@ ANALYTICS_TOOL_DEFINITION: dict[str, Any] = {
                 "month": {"type": "integer", "description": "Optional month 1-12 filter."},
                 "date_after": {"type": "string", "description": "Optional exclusive lower bound ISO date YYYY-MM-DD."},
                 "date_before": {"type": "string", "description": "Optional exclusive upper bound ISO date YYYY-MM-DD."},
-                "top_n": {"type": "integer", "description": "For top_days, how many rows (default 5)."},
+                "top_n": {
+                    "anyOf": [{"type": "integer"}, {"type": "string"}],
+                    "description": "For top_days/bottom_days: row count (e.g. 5). Integer preferred.",
+                },
                 "month_a": {"type": "integer", "description": "For compare_months: first month 1-12."},
                 "month_b": {"type": "integer", "description": "For compare_months: second month 1-12."},
                 "window": {
@@ -544,11 +652,12 @@ FACT_SHEET (precomputed; authoritative for high-level narrative and context):
 {facts_json}
 
 Rules:
-1) For ANY specific number (totals, averages, min/max, top days, comparisons, filtered periods), you MUST call the tool `run_business_analytics` and then base your answer ONLY on the tool JSON result.
-2) Never invent, extrapolate, or mentally recalculate figures. If the tool says a filter has no rows, explain that clearly.
-3) margin_pct is a percentage (e.g. 12.3 means 12.3%), not a dollar amount.
-4) Be concise and practical. End with one clear recommendation when appropriate.
-5) If the user asks something outside the dataset (e.g. market benchmarks), say you only have their uploaded data."""
+1) For ANY specific number (totals, averages, min/max, ranked days, comparisons, filtered periods), you MUST call `run_business_analytics` and answer ONLY from the latest tool JSON. Do not blend FACT_SHEET numbers with tool results if they could differ.
+2) "Lowest/worst/smallest N days" -> operation bottom_days with metric revenue (or cost/profit as asked) and filters. "Highest/top N days" -> top_days. "Lowest single day" / "minimum" -> min with the same filters.
+3) Never invent or mentally recalculate. If the tool returns multiple rows, list them exactly.
+4) margin_pct is a percentage, not dollars.
+5) Be concise; end with one recommendation when helpful.
+6) If the question is outside the dataset, say you only have their upload."""
 
 
 def run_grounded_analyst(
@@ -767,9 +876,9 @@ def extract_date_filter(df: pd.DataFrame, text: str) -> tuple[pd.DataFrame, str]
 if st.session_state.page == "auth":
     st.markdown(
         """
-    <div style="text-align:center;padding:3rem 0 1.5rem 0;">
-      <div class="auth-logo">BizCopilot</div>
-      <div class="auth-tagline">AI-powered business intelligence</div>
+    <div class="auth-wrap">
+      <div class="auth-logo">Biz<span>Copilot</span></div>
+      <div class="auth-tagline">Analytics workspace · grounded AI</div>
     </div>
     """,
         unsafe_allow_html=True,
@@ -828,7 +937,7 @@ business = st.session_state.business
 
 with st.sidebar:
     st.markdown(
-        '<div class="sidebar-logo">BizCopilot</div>'
+        '<div class="sidebar-logo">Biz<span>Copilot</span></div>'
         '<div class="sidebar-sub">'
         + business.get("industry", "Business").upper()
         + " / "
@@ -873,8 +982,8 @@ with st.sidebar:
                 del st.session_state[key]
         st.rerun()
     st.markdown(
-        '<div style="margin-top:1rem;font-size:0.7rem;color:#78716C;font-family:DM Mono,monospace;">'
-        + user["name"]
+        '<div style="margin-top:1rem;font-size:0.7rem;color:#94a3b8;font-family:IBM Plex Mono,monospace;">'
+        + html_module.escape(user["name"])
         + "</div>",
         unsafe_allow_html=True,
     )
@@ -882,118 +991,162 @@ with st.sidebar:
 if st.session_state.df is None:
     st.markdown("<br><br>", unsafe_allow_html=True)
     st.markdown(
-        '<div style="text-align:center;padding:4rem 2rem;">'
-        '<div style="font-size:3rem;margin-bottom:1.2rem;">&#128202;</div>'
-        '<div style="font-family:Playfair Display,serif;font-size:1.4rem;font-weight:700;'
-        'color:#44403C;margin-bottom:0.6rem;">No data loaded</div>'
-        '<div style="color:#78716C;font-size:0.9rem;line-height:1.6;max-width:360px;margin:0 auto;">'
-        "Upload a CSV or click <strong>Use Sample Data</strong> in the sidebar.</div>"
+        '<div class="card-surface" style="text-align:center;padding:3rem 2rem;max-width:480px;margin:0 auto;">'
+        '<div style="font-size:2.5rem;margin-bottom:1rem;">&#128200;</div>'
+        '<div style="font-size:1.25rem;font-weight:700;color:#e8edf7;margin-bottom:0.5rem;">Connect your data</div>'
+        '<div style="color:#94a3b8;font-size:0.9rem;line-height:1.65;">'
+        "Upload a CSV in the sidebar or use <strong style=\"color:#38bdf8;\">Sample Data</strong> to open the workspace.</div>"
         "</div>",
         unsafe_allow_html=True,
     )
     st.stop()
 
 df = st.session_state.df
-
-row_h1, row_h2 = st.columns([3, 1])
-with row_h1:
-    st.markdown(
-        "<h1>AI Business Copilot</h1>"
-        '<div style="font-size:0.875rem;color:#78716C;margin-bottom:1.25rem;">Welcome back, <strong style="color:#0D9488;">'
-        + html_module.escape(user["name"])
-        + "</strong> — "
-        + html_module.escape(business.get("name", ""))
-        + "</div>",
-        unsafe_allow_html=True,
-    )
-
-col1, col2, col3, col4 = st.columns(4)
-if "revenue" in df.columns:
-    col1.metric("Total Revenue", "$" + f"{df['revenue'].sum():,.2f}")
-if "cost" in df.columns:
-    col2.metric("Total Costs", "$" + f"{df['cost'].sum():,.2f}")
-if "profit" in df.columns:
-    col3.metric("Total Profit", "$" + f"{df['profit'].sum():,.2f}")
-if "margin_pct" in df.columns:
-    col4.metric("Avg Margin", str(round(df["margin_pct"].mean(), 1)) + "%")
+_range = str(df["date"].min().date()) + " → " + str(df["date"].max().date())
 
 st.markdown(
-    '<div class="section-label" style="margin-top:1.5rem;">Performance Trend</div>',
-    unsafe_allow_html=True,
-)
-c1, c2 = st.columns([1, 5])
-with c1:
-    metric_choice = st.selectbox("", ["revenue", "cost", "profit"], label_visibility="collapsed")
-chart_cols = [c for c in [metric_choice] if c in df.columns]
-if chart_cols:
-    st.line_chart(df.set_index("date")[chart_cols], height=210)
-
-with st.expander("View Raw Data"):
-    st.dataframe(df.sort_values("date", ascending=False), use_container_width=True)
-
-st.markdown("<hr>", unsafe_allow_html=True)
-st.markdown(
-    '<div class="ai-section-header">'
-    '<div class="ai-orb"></div>'
-    '<div class="ai-section-title">AI Business Analyst (tool-grounded)</div>'
+    '<div class="hero-strip">'
+    "<div>"
+    '<div class="hero-kicker">Workspace</div>'
+    '<div class="hero-title">'
+    + html_module.escape(business.get("name", "Your business"))
+    + "</div>"
+    '<div style="color:#94a3b8;font-size:0.88rem;margin-top:0.35rem;">Signed in as <strong style="color:#e8edf7;">'
+    + html_module.escape(user["name"])
+    + "</strong></div>"
+    "</div>"
+    '<div style="text-align:right;">'
+    '<div class="hero-pill">● Live dataset</div>'
+    '<div style="font-family:IBM Plex Mono,monospace;font-size:0.72rem;color:#64748b;margin-top:0.5rem;">'
+    + html_module.escape(_range)
+    + "<br>"
+    + str(len(df))
+    + " rows</div>"
+    "</div>"
     "</div>",
     unsafe_allow_html=True,
 )
-st.caption(f"Model: {GROQ_MODEL} — numbers come from your data via analytics tools, not from guesses.")
 
-if not st.session_state.messages:
-    st.info(
-        "Ask questions in natural language. For totals, comparisons, and advice, the AI calls **run_business_analytics** "
-        "so figures match your upload."
+tab_overview, tab_copilot = st.tabs(["Overview", "AI Copilot"])
+
+with tab_overview:
+    st.markdown("<h1>Performance</h1>", unsafe_allow_html=True)
+    st.markdown(
+        '<p style="color:#94a3b8;font-size:0.9rem;margin:-0.25rem 0 1rem 0;">KPIs and trends from your current upload.</p>',
+        unsafe_allow_html=True,
+    )
+    col1, col2, col3, col4 = st.columns(4)
+    if "revenue" in df.columns:
+        col1.metric("Total revenue", "$" + f"{df['revenue'].sum():,.0f}")
+    if "cost" in df.columns:
+        col2.metric("Total costs", "$" + f"{df['cost'].sum():,.0f}")
+    if "profit" in df.columns:
+        col3.metric("Total profit", "$" + f"{df['profit'].sum():,.0f}")
+    if "margin_pct" in df.columns:
+        col4.metric("Avg margin", str(round(df["margin_pct"].mean(), 1)) + "%")
+
+    st.markdown('<div class="section-label">Trend</div>', unsafe_allow_html=True)
+    st.markdown('<div class="card-surface" style="padding-bottom:0.5rem;">', unsafe_allow_html=True)
+    c1, c2 = st.columns([1, 5])
+    with c1:
+        metric_choice = st.selectbox("Metric", ["revenue", "cost", "profit"], label_visibility="collapsed")
+    chart_cols = [c for c in [metric_choice] if c in df.columns]
+    if chart_cols:
+        st.line_chart(df.set_index("date")[chart_cols], height=240)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    with st.expander("Raw data table"):
+        st.dataframe(df.sort_values("date", ascending=False), use_container_width=True)
+
+with tab_copilot:
+    st.markdown(
+        '<div class="ai-panel-head">'
+        '<div class="ai-panel-title">Copilot</div>'
+        '<div class="ai-panel-meta">'
+        + html_module.escape(GROQ_MODEL)
+        + " · tool-grounded analytics</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<p style="color:#94a3b8;font-size:0.85rem;margin:-0.5rem 0 1rem 0;">'
+        "Ask in plain language. Numbers are computed from your data; charts open here when you ask for visuals.</p>",
+        unsafe_allow_html=True,
     )
 
-for msg in st.session_state.messages:
-    if msg["role"] == "user":
-        st.markdown(
-            '<div class="msg-user"><div class="bubble">'
-            + html_module.escape(msg["content"]).replace("\n", "<br>")
-            + "</div></div>",
-            unsafe_allow_html=True,
-        )
-    else:
-        raw = msg["content"]
-        safe = html_module.escape(raw)
-        if "  " in raw and "\n" in raw:
-            formatted = (
-                '<pre style="font-family:DM Mono,monospace;font-size:0.82rem;white-space:pre;overflow-x:auto;'
-                'background:rgba(13,148,136,0.05);border-radius:10px;padding:0.75rem;margin:0;">'
-                + safe
-                + "</pre>"
+    if not st.session_state.messages:
+        st.info("Try: **total revenue**, **5 lowest sales days in February**, **revenue vs expenses chart**, or **pie chart of totals**.")
+
+    for msg in st.session_state.messages:
+        if msg["role"] == "user":
+            st.markdown(
+                '<div class="msg-user"><div class="bubble">'
+                + html_module.escape(msg["content"]).replace("\n", "<br>")
+                + "</div></div>",
+                unsafe_allow_html=True,
             )
         else:
-            formatted = safe.replace("\n", "<br>")
-        st.markdown(
-            '<div class="msg-bot"><div class="bot-avatar">AI</div>'
-            '<div class="bubble">'
-            + formatted
-            + "</div></div>",
-            unsafe_allow_html=True,
-        )
-        if msg.get("chart") is not None:
+            raw = msg["content"]
+            safe = html_module.escape(raw)
+            if "  " in raw and "\n" in raw:
+                formatted = (
+                    '<pre style="font-family:IBM Plex Mono,monospace;font-size:0.8rem;white-space:pre;overflow-x:auto;'
+                    'background:rgba(56,189,248,0.06);border-radius:10px;padding:0.75rem;margin:0;border:1px solid rgba(148,163,184,0.2);">'
+                    + safe
+                    + "</pre>"
+                )
+            else:
+                formatted = safe.replace("\n", "<br>")
+            st.markdown(
+                '<div class="msg-bot"><div class="bot-avatar">AI</div>'
+                '<div class="bubble">'
+                + formatted
+                + "</div></div>",
+                unsafe_allow_html=True,
+            )
+            ck = msg.get("chart_kind")
             try:
-                chart_data = msg["chart"].set_index("date")
-                allowed = [c for c in ["revenue", "cost", "profit"] if c in chart_data.columns]
-                if msg.get("show_multi"):
-                    cols_to_show = allowed
-                elif msg.get("chart_metric") and msg["chart_metric"] in chart_data.columns:
-                    cols_to_show = [msg["chart_metric"]]
-                else:
-                    cols_to_show = allowed
-                if msg.get("chart_type") == "bar":
-                    st.bar_chart(chart_data[cols_to_show], height=220)
-                else:
-                    st.line_chart(chart_data[cols_to_show], height=220)
+                if ck == "pie" and msg.get("pie_source"):
+                    pddf = pd.DataFrame(msg["pie_source"])
+                    pie_chart = (
+                        alt.Chart(pddf)
+                        .mark_arc(innerRadius=48, stroke="#1e293b", strokeWidth=1)
+                        .encode(
+                            theta=alt.Theta("value:Q"),
+                            color=alt.Color(
+                                "category:N",
+                                scale=alt.Scale(range=["#38bdf8", "#a78bfa", "#34d399"]),
+                                legend=alt.Legend(title=None),
+                            ),
+                            tooltip=["category:N", alt.Tooltip("value:Q", format=",.0f")],
+                        )
+                        .properties(height=280)
+                    )
+                    st.altair_chart(pie_chart, use_container_width=True)
+                elif ck == "scatter" and msg.get("chart") is not None:
+                    cdf = msg["chart"].copy()
+                    ym = msg.get("chart_metric", "revenue")
+                    if ym in cdf.columns:
+                        st.scatter_chart(cdf[["date", ym]], x="date", y=ym, height=280)
+                elif msg.get("chart") is not None:
+                    chart_data = msg["chart"].set_index("date")
+                    allowed = [c for c in ["revenue", "cost", "profit"] if c in chart_data.columns]
+                    if msg.get("show_multi"):
+                        cols_to_show = allowed
+                    elif msg.get("chart_metric") and msg["chart_metric"] in chart_data.columns:
+                        cols_to_show = [msg["chart_metric"]]
+                    else:
+                        cols_to_show = allowed
+                    if msg.get("chart_type") == "bar":
+                        st.bar_chart(chart_data[cols_to_show], height=240)
+                    else:
+                        st.line_chart(chart_data[cols_to_show], height=240)
             except Exception:
                 pass
 
-st.markdown('<div class="chat-input-sticky">', unsafe_allow_html=True)
-user_input = st.chat_input("Ask anything about your business data...")
-st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown('<div class="chat-input-sticky">', unsafe_allow_html=True)
+    user_input = st.chat_input("Ask anything about your business data...")
+    st.markdown("</div>", unsafe_allow_html=True)
 
 if user_input:
     text = user_input.lower()
@@ -1004,6 +1157,8 @@ if user_input:
     chart_metric_out = "revenue"
     chart_type_out = "line"
     show_multi = False
+    chart_kind_out: str | None = None
+    pie_source_out: list[dict[str, Any]] | None = None
 
     specific_date = extract_specific_date(text)
     is_asking_total_month = (has_word(text, "total") or has_word(text, "sum")) and any(
@@ -1082,10 +1237,100 @@ if user_input:
         chart_type_out = "bar"
 
     is_chart = any(
-        k in text for k in ["chart", "graph", "trend", "plot", "visualize", "draw", "display"]
-    )
+        k in text
+        for k in [
+            "chart",
+            "graph",
+            "trend",
+            "plot",
+            "visualize",
+            "draw",
+            "display",
+            "scatter",
+            "pie",
+            "histogram",
+        ]
+    ) or bool(re.search(r"\bmap\b", text))
 
     if is_chart:
+        if re.search(r"\bmap\b", text) and "heatmap" not in text:
+            response = (
+                "Geographic maps need location data (region, store, latitude/longitude). "
+                "Your spreadsheet is daily financial totals only, so a map is not available. "
+                "Try a line or bar chart for trends, or a pie chart for revenue vs cost vs profit share."
+            )
+            st.session_state.messages.append({"role": "user", "content": user_input})
+            st.session_state.messages.append(
+                {
+                    "role": "assistant",
+                    "content": response,
+                    "chart": None,
+                    "chart_metric": chart_metric_out,
+                    "chart_type": chart_type_out,
+                    "show_multi": show_multi,
+                    "chart_kind": None,
+                    "pie_source": None,
+                }
+            )
+            st.rerun()
+
+        if "pie" in text:
+            need = ["revenue", "cost", "profit"]
+            if not all(c in data.columns for c in need):
+                response = "Pie chart needs revenue, cost, and profit columns in the data."
+            else:
+                pie_source_out = [
+                    {"category": "Revenue", "value": float(data["revenue"].sum())},
+                    {"category": "Cost", "value": float(data["cost"].sum())},
+                    {"category": "Profit", "value": float(data["profit"].sum())},
+                ]
+                chart_kind_out = "pie"
+                period_bits = []
+                if matched_month:
+                    period_bits.append(matched_month)
+                if matched_year:
+                    period_bits.append(str(matched_year))
+                period = " · ".join(period_bits) if period_bits else "full range"
+                response = "Pie chart: share of revenue, cost, and profit (" + period + ")."
+            st.session_state.messages.append({"role": "user", "content": user_input})
+            st.session_state.messages.append(
+                {
+                    "role": "assistant",
+                    "content": response,
+                    "chart": chart_df_out,
+                    "chart_metric": chart_metric_out,
+                    "chart_type": chart_type_out,
+                    "show_multi": show_multi,
+                    "chart_kind": chart_kind_out,
+                    "pie_source": pie_source_out,
+                }
+            )
+            st.rerun()
+
+        if "scatter" in text:
+            m = metric if metric in ["revenue", "cost", "profit"] else "revenue"
+            if m not in data.columns:
+                response = "Cannot build a scatter plot: missing " + m + " column."
+            else:
+                chart_df_out = data[["date", m]].copy()
+                chart_metric_out = m
+                chart_kind_out = "scatter"
+                response = "Scatter plot: " + m + " by day (each point is one day)."
+            st.session_state.messages.append({"role": "user", "content": user_input})
+            st.session_state.messages.append(
+                {
+                    "role": "assistant",
+                    "content": response,
+                    "chart": chart_df_out,
+                    "chart_metric": chart_metric_out,
+                    "chart_type": chart_type_out,
+                    "show_multi": show_multi,
+                    "chart_kind": chart_kind_out,
+                    "pie_source": pie_source_out,
+                }
+            )
+            st.rerun()
+
         show_both = any(
             p in text
             for p in ["and expense", "and cost", "versus", "vs", "and revenue", "and sales", "and profit"]
@@ -1111,11 +1356,13 @@ if user_input:
             chart_df_out = data[["date"] + [c for c in cols if c in data.columns]]
             chart_metric_out = cols[0]
             show_multi = True
+            chart_kind_out = "bar" if chart_type_out == "bar" else "line"
         else:
             m = metric if metric in ["revenue", "cost", "profit"] else "revenue"
             response = m.capitalize() + " trend"
             chart_df_out = data[["date", m]] if m in data.columns else None
             chart_metric_out = m
+            chart_kind_out = "bar" if chart_type_out == "bar" else "line"
         st.session_state.messages.append({"role": "user", "content": user_input})
         st.session_state.messages.append(
             {
@@ -1125,6 +1372,8 @@ if user_input:
                 "chart_metric": chart_metric_out,
                 "chart_type": chart_type_out,
                 "show_multi": show_multi,
+                "chart_kind": chart_kind_out,
+                "pie_source": pie_source_out,
             }
         )
         st.rerun()
@@ -1150,6 +1399,8 @@ if user_input:
             "chart_metric": chart_metric_out,
             "chart_type": chart_type_out,
             "show_multi": show_multi,
+            "chart_kind": chart_kind_out,
+            "pie_source": pie_source_out,
         }
     )
     st.rerun()
