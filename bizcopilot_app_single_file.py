@@ -820,7 +820,7 @@ if "GROQ_API_KEY" not in st.secrets:
     st.stop()
 
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
-GROQ_MODEL = str(st.secrets.get("GROQ_MODEL", "llama-3.3-70b-versatile"))
+GROQ_MODEL = str(st.secrets.get("GROQ_MODEL", "llama-3.1-8b-instant"))
 
 st.markdown(STYLES, unsafe_allow_html=True)
 
