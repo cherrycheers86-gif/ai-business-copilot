@@ -34,272 +34,338 @@ def _safe_int(val: Any, default: int) -> int:
 
 
 # =============================================================================
-# UI (CSS) — dark analytics shell, distinct from prior cream/teal theme
+# UI — premium light workspace (warm paper + teal, single-page flow)
 # =============================================================================
 STYLES = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;7..144,700;9..144,800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=DM+Mono:wght@400;500&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; }
 
 :root {
-  --bg0:      #07080d;
-  --bg1:      #0e1118;
-  --bg2:      #151a24;
-  --stroke:   rgba(148, 163, 184, 0.18);
-  --text:     #e8edf7;
-  --muted:    #94a3b8;
-  --accent:   #38bdf8;
-  --accent2:  #a78bfa;
-  --good:     #34d399;
-  --warn:     #fbbf24;
-  --danger:   #fb7185;
-  --radius:   16px;
-  --radius-lg: 22px;
-  --font:     'Outfit', system-ui, sans-serif;
-  --mono:     'IBM Plex Mono', ui-monospace, monospace;
+  --paper:     #fbfaf7;
+  --paper2:    #f3f0e8;
+  --card:      rgba(255,255,255,0.88);
+  --ink:       #1c1917;
+  --ink-mid:   #44403c;
+  --ink-soft:  #78716c;
+  --line:      rgba(28,25,23,0.08);
+  --line2:     rgba(28,25,23,0.12);
+  --teal:      #0d9488;
+  --teal-dim:  #0f766e;
+  --amber:     #d97706;
+  --rose:      #e11d48;
+  --radius:    18px;
+  --radius-sm: 12px;
+  --shadow:    0 4px 24px rgba(28,25,23,0.06);
+  --shadow-lg: 0 20px 50px rgba(28,25,23,0.08);
+  --font-display: 'Fraunces', 'Georgia', serif;
+  --font-body:    'DM Sans', system-ui, sans-serif;
+  --font-mono:    'DM Mono', ui-monospace, monospace;
 }
 
 html, body, [data-testid="stAppViewContainer"] {
-  background: var(--bg0) !important;
-  color: var(--text) !important;
-  font-family: var(--font) !important;
+  background: var(--paper) !important;
+  color: var(--ink) !important;
+  font-family: var(--font-body) !important;
 }
 
 [data-testid="stAppViewContainer"]::before {
   content: '';
   position: fixed; inset: 0;
   background:
-    radial-gradient(ellipse 90% 70% at 0% -10%, rgba(56, 189, 248, 0.14) 0%, transparent 55%),
-    radial-gradient(ellipse 70% 60% at 100% 0%, rgba(167, 139, 250, 0.12) 0%, transparent 50%),
-    radial-gradient(ellipse 60% 50% at 80% 100%, rgba(52, 211, 153, 0.06) 0%, transparent 45%);
+    radial-gradient(ellipse 85% 55% at 0% -5%, rgba(13,148,136,0.09) 0%, transparent 55%),
+    radial-gradient(ellipse 70% 50% at 100% 10%, rgba(217,119,6,0.06) 0%, transparent 50%),
+    radial-gradient(ellipse 50% 40% at 50% 100%, rgba(225,29,72,0.03) 0%, transparent 60%);
   pointer-events: none; z-index: 0;
 }
 
 [data-testid="stMain"] { background: transparent !important; position: relative; z-index: 1; }
-/* Keep header visible: Streamlit puts the sidebar expand/collapse control in the header.
-   Hiding it traps users after they collapse the sidebar. */
 #MainMenu, footer { visibility: hidden; height: 0 !important; overflow: hidden !important; }
 [data-testid="stDecoration"] { display: none; }
 
 [data-testid="stHeader"] {
-  background: rgba(7, 8, 13, 0.92) !important;
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid rgba(148, 163, 184, 0.12) !important;
+  background: rgba(251, 250, 247, 0.92) !important;
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--line2) !important;
 }
-[data-testid="stHeader"] button { color: #e8edf7 !important; }
+[data-testid="stHeader"] button { color: var(--ink-mid) !important; }
 
 .block-container {
-  padding: 1.75rem 2rem 2rem 2rem !important;
-  max-width: 1280px !important;
+  padding: 1.5rem 2rem 3rem 2rem !important;
+  max-width: 1100px !important;
 }
 
 [data-testid="stSidebar"] {
-  background: linear-gradient(180deg, #0a0c12 0%, #0f1219 100%) !important;
-  border-right: 1px solid var(--stroke) !important;
+  background: linear-gradient(180deg, #faf8f4 0%, #f5f2eb 100%) !important;
+  border-right: 1px solid var(--line2) !important;
 }
 [data-testid="stSidebarNav"] { display: none; }
-section[data-testid="stSidebar"] { min-width: 270px !important; }
+section[data-testid="stSidebar"] { min-width: 268px !important; }
 
 [data-testid="stSidebar"] p,
 [data-testid="stSidebar"] span,
-[data-testid="stSidebar"] div,
-[data-testid="stSidebar"] label { color: var(--muted) !important; }
+[data-testid="stSidebar"] label { color: var(--ink-mid) !important; }
 
 [data-testid="stSidebar"] .stButton > button {
   width: 100%;
-  background: rgba(56, 189, 248, 0.08) !important;
-  border: 1px solid rgba(56, 189, 248, 0.28) !important;
-  color: var(--accent) !important;
-  border-radius: 12px !important;
+  background: rgba(13,148,136,0.07) !important;
+  border: 1px solid rgba(13,148,136,0.22) !important;
+  color: var(--teal-dim) !important;
+  border-radius: var(--radius-sm) !important;
   font-weight: 600 !important;
   font-size: 0.8125rem !important;
-  padding: 0.5rem 0.9rem !important;
 }
 
 h1 {
-  font-family: var(--font) !important;
-  font-weight: 800 !important;
-  font-size: 1.85rem !important;
-  letter-spacing: -0.03em !important;
-  color: var(--text) !important;
-  background: linear-gradient(90deg, #f8fafc, #94a3b8);
-  -webkit-background-clip: text !important;
-  -webkit-text-fill-color: transparent !important;
-  background-clip: text !important;
+  font-family: var(--font-display) !important;
+  font-weight: 700 !important;
+  font-size: 1.65rem !important;
+  letter-spacing: -0.02em !important;
+  color: var(--ink) !important;
+  margin: 0 0 0.25rem 0 !important;
+}
+
+h2, h3 {
+  font-family: var(--font-body) !important;
+  font-weight: 600 !important;
+  font-size: 0.68rem !important;
+  letter-spacing: 0.14em !important;
+  text-transform: uppercase !important;
+  color: var(--ink-soft) !important;
 }
 
 [data-testid="stMetric"] {
-  background: linear-gradient(145deg, rgba(21, 26, 36, 0.95), rgba(14, 17, 24, 0.85)) !important;
-  border: 1px solid var(--stroke) !important;
+  background: var(--card) !important;
+  border: 1px solid var(--line2) !important;
   border-radius: var(--radius) !important;
-  padding: 1.1rem 1.25rem !important;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.35) !important;
+  padding: 1.15rem 1.3rem !important;
+  box-shadow: var(--shadow) !important;
+  backdrop-filter: blur(10px);
+  transition: box-shadow 0.2s ease, transform 0.2s ease !important;
 }
-[data-testid="stMetricLabel"] { color: var(--muted) !important; font-family: var(--mono) !important; font-size: 0.65rem !important; letter-spacing: 0.08em !important; text-transform: uppercase !important; }
-[data-testid="stMetricValue"] { color: var(--text) !important; font-weight: 700 !important; font-size: 1.45rem !important; }
-
-[data-testid="stTabs"] { margin-top: 0.25rem; }
-[data-testid="stTabs"] [data-baseweb="tab-list"] {
-  background: rgba(14, 17, 24, 0.6) !important;
-  border: 1px solid var(--stroke) !important;
-  border-radius: 14px !important;
-  padding: 4px !important;
-  gap: 4px !important;
+[data-testid="stMetric"]:hover {
+  box-shadow: var(--shadow-lg) !important;
+  transform: translateY(-2px);
 }
-[data-testid="stTabs"] button[data-baseweb="tab"] {
-  border-radius: 10px !important;
-  color: var(--muted) !important;
-  font-weight: 600 !important;
-  font-size: 0.875rem !important;
+[data-testid="stMetricLabel"] {
+  color: var(--ink-soft) !important;
+  font-family: var(--font-mono) !important;
+  font-size: 0.62rem !important;
+  letter-spacing: 0.1em !important;
+  text-transform: uppercase !important;
 }
-[data-testid="stTabs"] [aria-selected="true"] {
-  background: linear-gradient(135deg, rgba(56,189,248,0.2), rgba(167,139,250,0.15)) !important;
-  color: var(--text) !important;
+[data-testid="stMetricValue"] {
+  color: var(--ink) !important;
+  font-family: var(--font-display) !important;
+  font-weight: 700 !important;
+  font-size: 1.5rem !important;
 }
 
 [data-testid="stVegaLiteChart"],
 [data-testid="stArrowVegaLiteChart"] {
-  background: rgba(14, 17, 24, 0.5) !important;
-  border: 1px solid var(--stroke) !important;
-  border-radius: var(--radius-lg) !important;
+  background: var(--card) !important;
+  border: 1px solid var(--line2) !important;
+  border-radius: var(--radius) !important;
   padding: 1rem !important;
+  box-shadow: var(--shadow) !important;
 }
 
 [data-testid="stSelectbox"] > div > div,
 [data-testid="stTextInput"] input,
 [data-testid="stChatInput"] {
-  background: var(--bg2) !important;
-  border: 1px solid var(--stroke) !important;
+  background: #fff !important;
+  border: 1px solid var(--line2) !important;
   border-radius: 14px !important;
-  color: var(--text) !important;
+  color: var(--ink) !important;
 }
 
 [data-testid="stExpander"] {
-  background: rgba(14, 17, 24, 0.45) !important;
-  border: 1px solid var(--stroke) !important;
+  background: var(--card) !important;
+  border: 1px solid var(--line2) !important;
   border-radius: var(--radius) !important;
+  box-shadow: var(--shadow) !important;
 }
 
-hr { border-color: var(--stroke) !important; opacity: 1 !important; margin: 1.5rem 0 !important; }
+hr {
+  border: none !important;
+  border-top: 1px solid var(--line2) !important;
+  margin: 2rem 0 !important;
+}
 
 [data-testid="stFileUploader"] {
-  background: rgba(21, 26, 36, 0.5) !important;
-  border: 1px dashed rgba(56, 189, 248, 0.35) !important;
+  background: rgba(255,255,255,0.7) !important;
+  border: 1.5px dashed rgba(13,148,136,0.35) !important;
   border-radius: 14px !important;
 }
 
 .stButton > button[kind="primary"] {
-  background: linear-gradient(135deg, #0ea5e9, #6366f1) !important;
+  background: linear-gradient(135deg, var(--teal), var(--teal-dim)) !important;
   border: none !important;
-  border-radius: 12px !important;
+  border-radius: var(--radius-sm) !important;
   font-weight: 600 !important;
-  box-shadow: 0 6px 24px rgba(14, 165, 233, 0.25) !important;
+  box-shadow: 0 6px 20px rgba(13,148,136,0.25) !important;
+}
+
+.stButton > button:not([kind="primary"]) {
+  border-radius: var(--radius-sm) !important;
 }
 
 div[data-testid="stAlert"] {
-  background: rgba(56, 189, 248, 0.08) !important;
-  border: 1px solid rgba(56, 189, 248, 0.25) !important;
-  border-radius: 12px !important;
+  background: rgba(13,148,136,0.06) !important;
+  border: 1px solid rgba(13,148,136,0.2) !important;
+  border-radius: var(--radius-sm) !important;
+  color: var(--teal-dim) !important;
 }
 
 .chat-input-sticky {
   position: sticky; bottom: 0; left: 0; right: 0;
-  background: linear-gradient(to top, var(--bg0) 70%, transparent);
-  padding: 0.75rem 0 1rem 0; z-index: 50;
+  background: linear-gradient(to top, var(--paper) 75%, transparent);
+  padding: 1rem 0 1.25rem 0;
+  z-index: 50;
 }
 
 .msg-user { display: flex; justify-content: flex-end; margin-bottom: 1rem; }
 .msg-user .bubble {
-  max-width: 78%;
-  background: linear-gradient(135deg, #0ea5e9, #6366f1);
+  max-width: 72%;
+  background: linear-gradient(145deg, var(--teal), var(--teal-dim));
   color: #fff;
-  border-radius: 20px 20px 6px 20px;
-  padding: 0.8rem 1.1rem;
+  border-radius: 22px 22px 6px 22px;
+  padding: 0.8rem 1.15rem;
   font-size: 0.9rem;
   line-height: 1.6;
-  box-shadow: 0 10px 40px rgba(99, 102, 241, 0.22);
+  box-shadow: 0 8px 28px rgba(13,148,136,0.22);
 }
 .msg-bot {
   display: flex; justify-content: flex-start;
   margin-bottom: 1rem; gap: 0.65rem; align-items: flex-start;
 }
 .bot-avatar {
-  width: 36px; height: 36px; border-radius: 10px;
-  background: linear-gradient(135deg, rgba(56,189,248,0.25), rgba(167,139,250,0.25));
-  border: 1px solid var(--stroke);
+  width: 36px; height: 36px; border-radius: 50%;
+  background: linear-gradient(145deg, rgba(13,148,136,0.15), rgba(217,119,6,0.12));
+  border: 1px solid var(--line2);
   display: flex; align-items: center; justify-content: center;
-  font-size: 0.65rem; font-weight: 700; color: var(--accent);
-  font-family: var(--mono);
+  font-size: 0.65rem; font-weight: 700; color: var(--teal-dim);
+  font-family: var(--font-mono);
   flex-shrink: 0;
 }
 .msg-bot .bubble {
-  max-width: 82%;
-  background: rgba(21, 26, 36, 0.85);
-  border: 1px solid var(--stroke);
-  color: var(--text);
-  border-radius: 8px 20px 20px 20px;
+  max-width: 78%;
+  background: var(--card);
+  border: 1px solid var(--line2);
+  color: var(--ink);
+  border-radius: 8px 22px 22px 22px;
   padding: 0.85rem 1.15rem;
   font-size: 0.9rem;
   line-height: 1.65;
+  box-shadow: var(--shadow);
 }
 
 .section-label {
-  font-size: 0.62rem; font-family: var(--mono); color: var(--muted);
-  text-transform: uppercase; letter-spacing: 0.16em; margin: 0.5rem 0 0.85rem 0;
+  font-size: 0.62rem; font-family: var(--font-mono); color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: 0.16em; margin: 1.5rem 0 0.75rem 0;
   display: flex; align-items: center; gap: 10px;
 }
-.section-label::after { content: ''; flex: 1; height: 1px; background: var(--stroke); }
+.section-label::after { content: ''; flex: 1; height: 1px; background: var(--line2); }
 
 .hero-strip {
   display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between;
-  gap: 1rem; margin-bottom: 1.25rem;
+  gap: 1rem; margin-bottom: 1.5rem;
+  padding: 1.25rem 1.5rem;
+  background: var(--card);
+  border: 1px solid var(--line2);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
 }
-.hero-kicker { font-family: var(--mono); font-size: 0.65rem; letter-spacing: 0.2em; color: var(--muted); text-transform: uppercase; }
-.hero-title { font-size: 1.35rem; font-weight: 700; color: var(--text); letter-spacing: -0.02em; margin-top: 0.25rem; }
+.hero-kicker {
+  font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.18em;
+  color: var(--ink-soft); text-transform: uppercase;
+}
+.hero-title {
+  font-family: var(--font-display); font-size: 1.5rem; font-weight: 700;
+  color: var(--ink); letter-spacing: -0.02em; margin-top: 0.2rem;
+}
+.hero-sub { color: var(--ink-soft); font-size: 0.88rem; margin-top: 0.35rem; }
+.hero-sub strong { color: var(--ink); }
+.hero-range {
+  font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-soft); margin-top: 0.5rem; line-height: 1.45;
+}
 .hero-pill {
-  display: inline-flex; align-items: center; gap: 8px;
+  display: inline-flex; align-items: center; gap: 6px;
   padding: 6px 14px; border-radius: 999px;
-  font-family: var(--mono); font-size: 0.7rem; color: var(--good);
-  border: 1px solid rgba(52, 211, 153, 0.35);
-  background: rgba(52, 211, 153, 0.08);
+  font-family: var(--font-mono); font-size: 0.68rem; font-weight: 500;
+  color: var(--teal-dim);
+  border: 1px solid rgba(13,148,136,0.25);
+  background: rgba(13,148,136,0.06);
 }
 
-.sidebar-logo { font-family: var(--font); font-weight: 800; font-size: 1.35rem; color: var(--text); letter-spacing: -0.03em; }
-.sidebar-logo span { color: var(--accent); }
-.sidebar-sub { font-size: 0.68rem; color: var(--muted) !important; font-family: var(--mono); letter-spacing: 0.04em; }
+.sidebar-logo { font-family: var(--font-display); font-weight: 800; font-size: 1.4rem; color: var(--ink); letter-spacing: -0.03em; }
+.sidebar-logo span { color: var(--teal); }
+.sidebar-sub { font-size: 0.68rem; color: var(--ink-soft) !important; font-family: var(--font-mono); letter-spacing: 0.04em; }
 .sidebar-stat {
-  background: rgba(21, 26, 36, 0.65); border: 1px solid var(--stroke);
-  border-radius: 12px; padding: 0.6rem 0.85rem; margin-bottom: 0.45rem;
-  font-size: 0.72rem; color: var(--muted) !important; font-family: var(--mono);
+  background: rgba(255,255,255,0.75); border: 1px solid var(--line2);
+  border-radius: var(--radius-sm); padding: 0.55rem 0.85rem; margin-bottom: 0.4rem;
+  font-size: 0.72rem; color: var(--ink-soft) !important; font-family: var(--font-mono);
 }
-.sidebar-stat span { color: var(--accent); font-weight: 600; }
+.sidebar-stat span { color: var(--teal); font-weight: 600; }
 
-.ai-panel-head {
-  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;
-  margin-bottom: 1rem;
+.ai-section-wrap {
+  margin-top: 0.5rem;
+  padding: 1.5rem 1.5rem 0.5rem 1.5rem;
+  background: linear-gradient(180deg, rgba(255,255,255,0.65) 0%, rgba(251,250,247,0.4) 100%);
+  border: 1px solid var(--line2);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
 }
-.ai-panel-title { font-weight: 700; font-size: 1.05rem; color: var(--text); }
-.ai-panel-meta { font-family: var(--mono); font-size: 0.68rem; color: var(--muted); }
+.ai-section-head {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 0.35rem;
+}
+.ai-orb {
+  width: 40px; height: 40px; border-radius: 14px;
+  background: linear-gradient(145deg, var(--teal), var(--amber));
+  opacity: 0.92;
+  box-shadow: 0 8px 24px rgba(13,148,136,0.2);
+}
+.ai-section-title { font-family: var(--font-display); font-weight: 700; font-size: 1.2rem; color: var(--ink); }
+.ai-section-meta { font-family: var(--font-mono); font-size: 0.68rem; color: var(--ink-soft); margin-left: 52px; }
 
-.onboard-title { font-family: var(--font); font-weight: 800; font-size: 1.65rem; color: var(--text); letter-spacing: -0.03em; }
-.onboard-sub { color: var(--muted); font-size: 0.875rem; margin-bottom: 1.5rem; }
+.onboard-title { font-family: var(--font-display); font-weight: 800; font-size: 1.65rem; color: var(--ink); letter-spacing: -0.03em; }
+.onboard-sub { color: var(--ink-soft); font-size: 0.875rem; margin-bottom: 1.5rem; }
 
 .auth-wrap { max-width: 420px; margin: 0 auto; padding: 2.5rem 0 2rem 0; }
-.auth-logo { font-family: var(--font); font-weight: 800; font-size: 2.25rem; color: var(--text); letter-spacing: -0.04em; text-align: center; }
-.auth-logo span { color: var(--accent); }
-.auth-tagline { font-size: 0.78rem; color: var(--muted); font-family: var(--mono); text-align: center; margin-top: 0.35rem; letter-spacing: 0.06em; }
+.auth-logo { font-family: var(--font-display); font-weight: 800; font-size: 2.35rem; color: var(--ink); letter-spacing: -0.04em; text-align: center; }
+.auth-logo span { color: var(--teal); }
+.auth-tagline { font-size: 0.78rem; color: var(--ink-soft); font-family: var(--font-mono); text-align: center; margin-top: 0.35rem; letter-spacing: 0.05em; }
 
 .card-surface {
-  background: linear-gradient(160deg, rgba(21,26,36,0.9), rgba(14,17,24,0.75));
-  border: 1px solid var(--stroke);
-  border-radius: var(--radius-lg);
-  padding: 1.25rem 1.35rem;
+  background: var(--card);
+  border: 1px solid var(--line2);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.25rem 1.4rem;
   margin-bottom: 1rem;
+}
+
+.empty-copilot {
+  text-align: center; padding: 2rem 1rem 1.5rem 1rem;
+}
+.empty-copilot-icon {
+  width: 64px; height: 64px; margin: 0 auto 1rem auto; border-radius: 50%;
+  background: linear-gradient(145deg, rgba(13,148,136,0.12), rgba(217,119,6,0.1));
+  border: 1px solid rgba(13,148,136,0.2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.5rem;
+}
+.empty-copilot h3 { font-family: var(--font-display); font-size: 1.05rem; color: var(--ink-mid); margin: 0 0 0.35rem 0; font-weight: 700; }
+.empty-copilot p { color: var(--ink-soft); font-size: 0.875rem; line-height: 1.6; max-width: 400px; margin: 0 auto 1rem auto; }
+.pill-grid { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 520px; margin: 0 auto; }
+.pill-hint {
+  background: #fff; border: 1px solid var(--line2); color: var(--teal-dim);
+  border-radius: 999px; padding: 6px 14px; font-size: 0.78rem; font-family: var(--font-body);
 }
 
 p, span, div, label { color: inherit; }
-[data-testid="stMarkdownContainer"] p { color: var(--muted); }
+[data-testid="stMarkdownContainer"] p { color: var(--ink-mid); }
 </style>
 """
 
@@ -998,7 +1064,7 @@ with st.sidebar:
                 del st.session_state[key]
         st.rerun()
     st.markdown(
-        '<div style="margin-top:1rem;font-size:0.7rem;color:#94a3b8;font-family:IBM Plex Mono,monospace;">'
+        '<div style="margin-top:1rem;font-size:0.7rem;color:#78716c;font-family:DM Mono,monospace;">'
         + html_module.escape(user["name"])
         + "</div>",
         unsafe_allow_html=True,
@@ -1009,10 +1075,10 @@ if st.session_state.df is None:
     st.markdown(
         '<div class="card-surface" style="text-align:center;padding:2rem 2rem 1.5rem 2rem;max-width:520px;margin:0 auto;">'
         '<div style="font-size:2.5rem;margin-bottom:1rem;">&#128200;</div>'
-        '<div style="font-size:1.25rem;font-weight:700;color:#e8edf7;margin-bottom:0.5rem;">Connect your data</div>'
-        '<div style="color:#94a3b8;font-size:0.9rem;line-height:1.65;margin-bottom:1rem;">'
-        "Upload a CSV below, use sample data, or open the sidebar with the "
-        '<strong style="color:#38bdf8;">&gt;&gt;</strong> control in the <strong style="color:#e8edf7;">top-left</strong> header.</div>'
+        '<div style="font-size:1.25rem;font-weight:700;font-family:var(--font-display);color:#1c1917;margin-bottom:0.5rem;">Connect your data</div>'
+        '<div style="color:#78716c;font-size:0.9rem;line-height:1.65;margin-bottom:1rem;">'
+        "Upload a CSV below, use sample data, or use the "
+        '<strong style="color:#0d9488;">&#9776;</strong> menu in the <strong>top-left</strong> to open the sidebar.</div>'
         "</div>",
         unsafe_allow_html=True,
     )
@@ -1028,17 +1094,17 @@ _range = str(df["date"].min().date()) + " → " + str(df["date"].max().date())
 st.markdown(
     '<div class="hero-strip">'
     "<div>"
-    '<div class="hero-kicker">Workspace</div>'
+    '<div class="hero-kicker">Your workspace</div>'
     '<div class="hero-title">'
     + html_module.escape(business.get("name", "Your business"))
     + "</div>"
-    '<div style="color:#94a3b8;font-size:0.88rem;margin-top:0.35rem;">Signed in as <strong style="color:#e8edf7;">'
+    '<div class="hero-sub">Signed in as <strong>'
     + html_module.escape(user["name"])
     + "</strong></div>"
     "</div>"
     '<div style="text-align:right;">'
-    '<div class="hero-pill">● Live dataset</div>'
-    '<div style="font-family:IBM Plex Mono,monospace;font-size:0.72rem;color:#64748b;margin-top:0.5rem;">'
+    '<div class="hero-pill">● Data connected</div>'
+    '<div class="hero-range">'
     + html_module.escape(_range)
     + "<br>"
     + str(len(df))
@@ -1048,137 +1114,148 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-tab_overview, tab_copilot = st.tabs(["Overview", "AI Copilot"])
+with st.expander("Upload or replace data (if the sidebar is closed)", expanded=False):
+    st.caption(
+        "Use the **menu / arrow** in the top-left to reopen the sidebar anytime. "
+        "You can also drop a new CSV here."
+    )
+    ingest_uploaded_csv(
+        st.file_uploader("CSV file", type=["csv"], label_visibility="visible", key="upload_main_overview")
+    )
+    if st.button("Reload sample dataset", key="sample_main_overview"):
+        st.session_state.df = get_sample_data()
+        st.rerun()
 
-with tab_overview:
-    st.markdown("<h1>Performance</h1>", unsafe_allow_html=True)
+st.markdown('<div class="section-label">Performance</div>', unsafe_allow_html=True)
+st.markdown(
+    "<h1>Snapshot</h1>"
+    '<p style="color:#78716c;font-size:0.9rem;margin:-0.2rem 0 1rem 0;">KPIs and daily trend from your current file.</p>',
+    unsafe_allow_html=True,
+)
+col1, col2, col3, col4 = st.columns(4)
+if "revenue" in df.columns:
+    col1.metric("Total revenue", "$" + f"{df['revenue'].sum():,.0f}")
+if "cost" in df.columns:
+    col2.metric("Total costs", "$" + f"{df['cost'].sum():,.0f}")
+if "profit" in df.columns:
+    col3.metric("Total profit", "$" + f"{df['profit'].sum():,.0f}")
+if "margin_pct" in df.columns:
+    col4.metric("Avg margin", str(round(df["margin_pct"].mean(), 1)) + "%")
+
+st.markdown('<div class="section-label">Trend</div>', unsafe_allow_html=True)
+c1, c2 = st.columns([1, 5])
+with c1:
+    metric_choice = st.selectbox("Metric", ["revenue", "cost", "profit"], label_visibility="collapsed")
+chart_cols = [c for c in [metric_choice] if c in df.columns]
+if chart_cols:
+    st.line_chart(df.set_index("date")[chart_cols], height=260)
+
+with st.expander("View raw data"):
+    st.dataframe(df.sort_values("date", ascending=False), use_container_width=True)
+
+st.markdown("<hr>", unsafe_allow_html=True)
+st.markdown(
+    '<div class="ai-section-wrap">'
+    '<div class="ai-section-head"><div class="ai-orb"></div>'
+    '<div><div class="ai-section-title">AI business copilot</div></div></div>'
+    '<div class="ai-section-meta">'
+    + html_module.escape(GROQ_MODEL)
+    + " · answers grounded in your numbers (analytics tools)</div>"
+    '<p style="color:#78716c;font-size:0.88rem;margin:0.75rem 0 0 0;line-height:1.55;">'
+    "Ask anything about totals, trends, comparisons, or strategy. Charts from your questions appear below the reply.</p>"
+    "</div>",
+    unsafe_allow_html=True,
+)
+
+if not st.session_state.messages:
     st.markdown(
-        '<p style="color:#94a3b8;font-size:0.9rem;margin:-0.25rem 0 1rem 0;">KPIs and trends from your current upload.</p>',
+        """
+<div class="empty-copilot">
+  <div class="empty-copilot-icon">&#10022;</div>
+  <h3>Start with a question</h3>
+  <p>Try one of these, or type your own in the box below.</p>
+  <div class="pill-grid">
+    <span class="pill-hint">Total revenue this period</span>
+    <span class="pill-hint">5 lowest sales days in February</span>
+    <span class="pill-hint">Revenue vs expenses chart</span>
+    <span class="pill-hint">How is my business doing?</span>
+    <span class="pill-hint">Pie chart of totals</span>
+  </div>
+</div>
+""",
         unsafe_allow_html=True,
     )
-    with st.expander("Data source — upload here if the sidebar is hidden", expanded=False):
-        st.caption(
-            "Tip: use the **arrow (›)** or **hamburger** in the **top-left** to show the sidebar again. "
-            "You can also replace your dataset below without opening it."
+
+for msg in st.session_state.messages:
+    if msg["role"] == "user":
+        st.markdown(
+            '<div class="msg-user"><div class="bubble">'
+            + html_module.escape(msg["content"]).replace("\n", "<br>")
+            + "</div></div>",
+            unsafe_allow_html=True,
         )
-        ingest_uploaded_csv(
-            st.file_uploader("CSV file", type=["csv"], label_visibility="visible", key="upload_main_overview")
-        )
-        if st.button("Reload sample dataset", key="sample_main_overview"):
-            st.session_state.df = get_sample_data()
-            st.rerun()
-    col1, col2, col3, col4 = st.columns(4)
-    if "revenue" in df.columns:
-        col1.metric("Total revenue", "$" + f"{df['revenue'].sum():,.0f}")
-    if "cost" in df.columns:
-        col2.metric("Total costs", "$" + f"{df['cost'].sum():,.0f}")
-    if "profit" in df.columns:
-        col3.metric("Total profit", "$" + f"{df['profit'].sum():,.0f}")
-    if "margin_pct" in df.columns:
-        col4.metric("Avg margin", str(round(df["margin_pct"].mean(), 1)) + "%")
-
-    st.markdown('<div class="section-label">Trend</div>', unsafe_allow_html=True)
-    st.markdown('<div class="card-surface" style="padding-bottom:0.5rem;">', unsafe_allow_html=True)
-    c1, c2 = st.columns([1, 5])
-    with c1:
-        metric_choice = st.selectbox("Metric", ["revenue", "cost", "profit"], label_visibility="collapsed")
-    chart_cols = [c for c in [metric_choice] if c in df.columns]
-    if chart_cols:
-        st.line_chart(df.set_index("date")[chart_cols], height=240)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    with st.expander("Raw data table"):
-        st.dataframe(df.sort_values("date", ascending=False), use_container_width=True)
-
-with tab_copilot:
-    st.markdown(
-        '<div class="ai-panel-head">'
-        '<div class="ai-panel-title">Copilot</div>'
-        '<div class="ai-panel-meta">'
-        + html_module.escape(GROQ_MODEL)
-        + " · tool-grounded analytics</div>"
-        "</div>",
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        '<p style="color:#94a3b8;font-size:0.85rem;margin:-0.5rem 0 1rem 0;">'
-        "Ask in plain language. Numbers are computed from your data; charts open here when you ask for visuals.</p>",
-        unsafe_allow_html=True,
-    )
-
-    if not st.session_state.messages:
-        st.info("Try: **total revenue**, **5 lowest sales days in February**, **revenue vs expenses chart**, or **pie chart of totals**.")
-
-    for msg in st.session_state.messages:
-        if msg["role"] == "user":
-            st.markdown(
-                '<div class="msg-user"><div class="bubble">'
-                + html_module.escape(msg["content"]).replace("\n", "<br>")
-                + "</div></div>",
-                unsafe_allow_html=True,
+    else:
+        raw = msg["content"]
+        safe = html_module.escape(raw)
+        if "  " in raw and "\n" in raw:
+            formatted = (
+                '<pre style="font-family:DM Mono,monospace;font-size:0.8rem;white-space:pre;overflow-x:auto;'
+                'background:rgba(13,148,136,0.06);border-radius:10px;padding:0.75rem;margin:0;border:1px solid rgba(28,25,23,0.1);">'
+                + safe
+                + "</pre>"
             )
         else:
-            raw = msg["content"]
-            safe = html_module.escape(raw)
-            if "  " in raw and "\n" in raw:
-                formatted = (
-                    '<pre style="font-family:IBM Plex Mono,monospace;font-size:0.8rem;white-space:pre;overflow-x:auto;'
-                    'background:rgba(56,189,248,0.06);border-radius:10px;padding:0.75rem;margin:0;border:1px solid rgba(148,163,184,0.2);">'
-                    + safe
-                    + "</pre>"
-                )
-            else:
-                formatted = safe.replace("\n", "<br>")
-            st.markdown(
-                '<div class="msg-bot"><div class="bot-avatar">AI</div>'
-                '<div class="bubble">'
-                + formatted
-                + "</div></div>",
-                unsafe_allow_html=True,
-            )
-            ck = msg.get("chart_kind")
-            try:
-                if ck == "pie" and msg.get("pie_source"):
-                    pddf = pd.DataFrame(msg["pie_source"])
-                    pie_chart = (
-                        alt.Chart(pddf)
-                        .mark_arc(innerRadius=48, stroke="#1e293b", strokeWidth=1)
-                        .encode(
-                            theta=alt.Theta("value:Q"),
-                            color=alt.Color(
-                                "category:N",
-                                scale=alt.Scale(range=["#38bdf8", "#a78bfa", "#34d399"]),
-                                legend=alt.Legend(title=None),
-                            ),
-                            tooltip=["category:N", alt.Tooltip("value:Q", format=",.0f")],
-                        )
-                        .properties(height=280)
+            formatted = safe.replace("\n", "<br>")
+        st.markdown(
+            '<div class="msg-bot"><div class="bot-avatar">AI</div>'
+            '<div class="bubble">'
+            + formatted
+            + "</div></div>",
+            unsafe_allow_html=True,
+        )
+        ck = msg.get("chart_kind")
+        try:
+            if ck == "pie" and msg.get("pie_source"):
+                pddf = pd.DataFrame(msg["pie_source"])
+                pie_chart = (
+                    alt.Chart(pddf)
+                    .mark_arc(innerRadius=48, stroke="#e7e5e4", strokeWidth=1)
+                    .encode(
+                        theta=alt.Theta("value:Q"),
+                        color=alt.Color(
+                            "category:N",
+                            scale=alt.Scale(range=["#0d9488", "#d97706", "#e11d48"]),
+                            legend=alt.Legend(title=None),
+                        ),
+                        tooltip=["category:N", alt.Tooltip("value:Q", format=",.0f")],
                     )
-                    st.altair_chart(pie_chart, use_container_width=True)
-                elif ck == "scatter" and msg.get("chart") is not None:
-                    cdf = msg["chart"].copy()
-                    ym = msg.get("chart_metric", "revenue")
-                    if ym in cdf.columns:
-                        st.scatter_chart(cdf[["date", ym]], x="date", y=ym, height=280)
-                elif msg.get("chart") is not None:
-                    chart_data = msg["chart"].set_index("date")
-                    allowed = [c for c in ["revenue", "cost", "profit"] if c in chart_data.columns]
-                    if msg.get("show_multi"):
-                        cols_to_show = allowed
-                    elif msg.get("chart_metric") and msg["chart_metric"] in chart_data.columns:
-                        cols_to_show = [msg["chart_metric"]]
-                    else:
-                        cols_to_show = allowed
-                    if msg.get("chart_type") == "bar":
-                        st.bar_chart(chart_data[cols_to_show], height=240)
-                    else:
-                        st.line_chart(chart_data[cols_to_show], height=240)
-            except Exception:
-                pass
+                    .properties(height=280)
+                )
+                st.altair_chart(pie_chart, use_container_width=True)
+            elif ck == "scatter" and msg.get("chart") is not None:
+                cdf = msg["chart"].copy()
+                ym = msg.get("chart_metric", "revenue")
+                if ym in cdf.columns:
+                    st.scatter_chart(cdf[["date", ym]], x="date", y=ym, height=280)
+            elif msg.get("chart") is not None:
+                chart_data = msg["chart"].set_index("date")
+                allowed = [c for c in ["revenue", "cost", "profit"] if c in chart_data.columns]
+                if msg.get("show_multi"):
+                    cols_to_show = allowed
+                elif msg.get("chart_metric") and msg["chart_metric"] in chart_data.columns:
+                    cols_to_show = [msg["chart_metric"]]
+                else:
+                    cols_to_show = allowed
+                if msg.get("chart_type") == "bar":
+                    st.bar_chart(chart_data[cols_to_show], height=240)
+                else:
+                    st.line_chart(chart_data[cols_to_show], height=240)
+        except Exception:
+            pass
 
-    st.markdown('<div class="chat-input-sticky">', unsafe_allow_html=True)
-    user_input = st.chat_input("Ask anything about your business data...")
-    st.markdown("</div>", unsafe_allow_html=True)
+st.markdown('<div class="chat-input-sticky">', unsafe_allow_html=True)
+user_input = st.chat_input("Ask anything about your business data...")
+st.markdown("</div>", unsafe_allow_html=True)
 
 if user_input:
     text = user_input.lower()
