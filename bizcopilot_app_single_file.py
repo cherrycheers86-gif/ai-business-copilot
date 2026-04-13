@@ -77,8 +77,17 @@ html, body, [data-testid="stAppViewContainer"] {
 }
 
 [data-testid="stMain"] { background: transparent !important; position: relative; z-index: 1; }
-#MainMenu, footer, header { visibility: hidden; }
+/* Keep header visible: Streamlit puts the sidebar expand/collapse control in the header.
+   Hiding it traps users after they collapse the sidebar. */
+#MainMenu, footer { visibility: hidden; height: 0 !important; overflow: hidden !important; }
 [data-testid="stDecoration"] { display: none; }
+
+[data-testid="stHeader"] {
+  background: rgba(7, 8, 13, 0.92) !important;
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12) !important;
+}
+[data-testid="stHeader"] button { color: #e8edf7 !important; }
 
 .block-container {
   padding: 1.75rem 2rem 2rem 2rem !important;
@@ -738,7 +747,7 @@ def run_grounded_analyst(
 # =============================================================================
 # Streamlit app
 # =============================================================================
-st.set_page_config(page_title="BizCopilot", layout="wide")
+st.set_page_config(page_title="BizCopilot", layout="wide", initial_sidebar_state="expanded")
 
 if "GROQ_API_KEY" not in st.secrets:
     st.error("Add GROQ_API_KEY to .streamlit/secrets.toml")
@@ -873,6 +882,20 @@ def extract_date_filter(df: pd.DataFrame, text: str) -> tuple[pd.DataFrame, str]
     return filtered, note
 
 
+def ingest_uploaded_csv(uploaded_obj: Any) -> None:
+    """Load CSV from a Streamlit UploadedFile into session_state.df."""
+    if uploaded_obj is None:
+        return
+    try:
+        raw_df = pd.read_csv(uploaded_obj)
+        cleaned = clean_dataframe(raw_df)
+        if cleaned is not None:
+            st.session_state.df = cleaned
+            st.success("Loaded " + str(len(cleaned)) + " rows")
+    except Exception as e:
+        st.error("Could not read file: " + str(e))
+
+
 if st.session_state.page == "auth":
     st.markdown(
         """
@@ -946,17 +969,10 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
     st.markdown('<div class="section-label">Data Source</div>', unsafe_allow_html=True)
-    uploaded_file = st.file_uploader("", type=["csv"], label_visibility="collapsed")
-    if uploaded_file:
-        try:
-            raw_df = pd.read_csv(uploaded_file)
-            cleaned = clean_dataframe(raw_df)
-            if cleaned is not None:
-                st.session_state.df = cleaned
-                st.success("Loaded " + str(len(cleaned)) + " rows")
-        except Exception as e:
-            st.error("Could not read file: " + str(e))
-    if st.button("Use Sample Data", use_container_width=True):
+    ingest_uploaded_csv(
+        st.file_uploader("CSV file", type=["csv"], label_visibility="collapsed", key="upload_sidebar")
+    )
+    if st.button("Use Sample Data", use_container_width=True, key="sample_sidebar"):
         st.session_state.df = get_sample_data()
         st.success("Sample data loaded")
     if st.session_state.df is not None:
@@ -976,7 +992,7 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
     st.markdown("<br><br>", unsafe_allow_html=True)
-    if st.button("Sign Out", use_container_width=True):
+    if st.button("Sign Out", use_container_width=True, key="signout_sidebar"):
         for key in ["page", "user", "business", "messages", "df"]:
             if key in st.session_state:
                 del st.session_state[key]
@@ -991,14 +1007,19 @@ with st.sidebar:
 if st.session_state.df is None:
     st.markdown("<br><br>", unsafe_allow_html=True)
     st.markdown(
-        '<div class="card-surface" style="text-align:center;padding:3rem 2rem;max-width:480px;margin:0 auto;">'
+        '<div class="card-surface" style="text-align:center;padding:2rem 2rem 1.5rem 2rem;max-width:520px;margin:0 auto;">'
         '<div style="font-size:2.5rem;margin-bottom:1rem;">&#128200;</div>'
         '<div style="font-size:1.25rem;font-weight:700;color:#e8edf7;margin-bottom:0.5rem;">Connect your data</div>'
-        '<div style="color:#94a3b8;font-size:0.9rem;line-height:1.65;">'
-        "Upload a CSV in the sidebar or use <strong style=\"color:#38bdf8;\">Sample Data</strong> to open the workspace.</div>"
+        '<div style="color:#94a3b8;font-size:0.9rem;line-height:1.65;margin-bottom:1rem;">'
+        "Upload a CSV below, use sample data, or open the sidebar with the "
+        '<strong style="color:#38bdf8;">&gt;&gt;</strong> control in the <strong style="color:#e8edf7;">top-left</strong> header.</div>'
         "</div>",
         unsafe_allow_html=True,
     )
+    ingest_uploaded_csv(st.file_uploader("Choose a CSV file", type=["csv"], key="upload_main_empty"))
+    if st.button("Load sample data", key="sample_main_empty", use_container_width=True, type="primary"):
+        st.session_state.df = get_sample_data()
+        st.rerun()
     st.stop()
 
 df = st.session_state.df
@@ -1035,6 +1056,17 @@ with tab_overview:
         '<p style="color:#94a3b8;font-size:0.9rem;margin:-0.25rem 0 1rem 0;">KPIs and trends from your current upload.</p>',
         unsafe_allow_html=True,
     )
+    with st.expander("Data source — upload here if the sidebar is hidden", expanded=False):
+        st.caption(
+            "Tip: use the **arrow (›)** or **hamburger** in the **top-left** to show the sidebar again. "
+            "You can also replace your dataset below without opening it."
+        )
+        ingest_uploaded_csv(
+            st.file_uploader("CSV file", type=["csv"], label_visibility="visible", key="upload_main_overview")
+        )
+        if st.button("Reload sample dataset", key="sample_main_overview"):
+            st.session_state.df = get_sample_data()
+            st.rerun()
     col1, col2, col3, col4 = st.columns(4)
     if "revenue" in df.columns:
         col1.metric("Total revenue", "$" + f"{df['revenue'].sum():,.0f}")
