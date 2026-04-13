@@ -4,7 +4,7 @@ import re
 from groq import Groq
 
 # CONFIG
-st.set_page_config(page_title="BizCopilot", layout="wide", page_icon="chart_with_upwards_trend")
+st.set_page_config(page_title="BizCopilot", layout="wide")
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
 st.markdown("""
@@ -366,6 +366,11 @@ hr { border-color: var(--linen) !important; margin: 1.25rem 0 !important; }
 }
 .ai-section-title { font-family: var(--font-display); font-weight: 700; font-size: 1.1rem; color: var(--ink); letter-spacing: -0.02em; }
 
+/* Hide file uploader label and instruction text */
+[data-testid="stFileUploaderDropzone"] div[data-testid="stMarkdownContainer"] { display: none !important; }
+[data-testid="stFileUploader"] label { display: none !important; }
+[data-testid="stFileUploaderDropzone"] > div:first-child > span { display: none !important; }
+
 /* ONBOARDING */
 .onboard-title { font-family: var(--font-display); font-weight: 800; font-size: 1.7rem; color: var(--ink); letter-spacing: -0.03em; margin-bottom: 0.4rem; }
 .onboard-sub { color: var(--ink-soft); font-size: 0.875rem; margin-bottom: 1.75rem; }
@@ -685,7 +690,7 @@ with st.sidebar:
         unsafe_allow_html=True
     )
     st.markdown('<div class="section-label">Data Source</div>', unsafe_allow_html=True)
-    uploaded_file = st.file_uploader("Upload CSV", type=["csv"], label_visibility="collapsed")
+    uploaded_file = st.file_uploader("", type=["csv"], label_visibility="collapsed")
     if uploaded_file:
         try:
             raw_df = pd.read_csv(uploaded_file)
@@ -802,15 +807,25 @@ if not st.session_state.messages:
 else:
     for msg in st.session_state.messages:
         if msg["role"] == "user":
+            import html as _html
             st.markdown(
                 '<div class="msg-user"><div class="bubble">' +
-                msg["content"].replace("\n", "<br>") + '</div></div>',
+                _html.escape(msg["content"]).replace("\n", "<br>") + '</div></div>',
                 unsafe_allow_html=True
             )
         else:
+            # Format content: preserve table alignment with <pre> if monospace-like
+            raw = msg["content"]
+            import html as _html
+            safe = _html.escape(raw)
+            # If content has aligned columns (multiple spaces), wrap in pre
+            if "  " in raw and "\n" in raw:
+                formatted = '<pre style="font-family:DM Mono,monospace;font-size:0.82rem;line-height:1.6;white-space:pre;overflow-x:auto;background:rgba(13,148,136,0.05);border-radius:10px;padding:0.75rem;margin:0;border:1px solid rgba(13,148,136,0.12);">' + safe + '</pre>'
+            else:
+                formatted = safe.replace("\n", "<br>")
             st.markdown(
                 '<div class="msg-bot"><div class="bot-avatar">AI</div>'
-                '<div class="bubble">' + msg["content"].replace("\n", "<br>") + '</div></div>',
+                '<div class="bubble">' + formatted + '</div></div>',
                 unsafe_allow_html=True
             )
             if msg.get("chart") is not None:
