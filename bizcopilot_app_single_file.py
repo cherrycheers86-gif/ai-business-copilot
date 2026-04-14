@@ -678,11 +678,10 @@ CODE_TOOL_DEFINITION: dict[str, Any] = {
     "function": {
         "name": "run_dataframe_code",
         "description": (
-            "Execute pandas code on the user's dataset. Variables: `df` (DataFrame copy, columns in system message), `pd` (pandas), "
-            "optionally `np`. No import/open/exec/eval or double-underscore names. "
-            "Assign the answer to `RESULT` (e.g. dict with figures, list of records, float, str, or a small DataFrame). "
-            "Filter months with df['date'].dt.month == 2, years with df['date'].dt.year == 2026. "
-            "For 'sales' use column revenue if present."
+            "Execute pandas on the user's dataset only. Variables: df (copy), pd, optional np. "
+            "Set RESULT to the answer. Respect user filters (month/year/date range); exclude out-of-range rows. "
+            "No import/open/exec/eval or __ names. For sales use revenue if present. "
+            "If a filter yields no rows, set RESULT to a string starting with: No data available for this request."
         ),
         "parameters": {
             "type": "object",
@@ -709,30 +708,78 @@ def _business_blurb(business: dict[str, Any]) -> str:
     )
 
 
+def _blocked_user_request(message: str) -> str | None:
+    """Refuse obvious OS/file/shell-jailbreak phrasing without calling the model."""
+    t = message.lower()
+    needles = (
+        "/etc/passwd",
+        "\\etc\\passwd",
+        "c:\\windows\\system32",
+        "subprocess",
+        "os.system",
+        "__import__",
+        "rm -rf",
+        "format c:",
+        "powershell -e",
+        "powershell -enc",
+        "cmd.exe /c",
+        "delete system files",
+        "read all files on disk",
+        "cat /etc",
+    )
+    if any(n in t for n in needles):
+        return "I can't help with that request."
+    return None
+
+
 def _system_prompt(fact_sheet: dict[str, Any], business: dict[str, Any], df: pd.DataFrame) -> str:
     facts_json = json.dumps(fact_sheet, indent=2, default=str)
     schema = _dataframe_schema_line(df)
-    return f"""You are an AI business analyst for a small business.
+    dr = fact_sheet.get("date_range") or {}
+    dr_hint = f"Dataset calendar span in FACT_SHEET: {dr.get('min', '?')} to {dr.get('max', '?')}. If the user omits a year, infer year from this range when filtering months."
+    return f"""You are an AI business analyst. Follow every rule below.
 
 {_business_blurb(business)}
 
-DATAFRAME_SCHEMA (columns and dtypes — use these exact names on df):
+DATAFRAME_SCHEMA (use exact column names on df):
 {schema}
 
-FACT_SHEET (precomputed summary for context; for precise filtered numbers prefer running code):
+FACT_SHEET (summary only; all specific numbers must come from your latest tool run unless identical):
 {facts_json}
 
-How to answer:
-1) For any question that needs numbers, aggregates, filters, rankings, correlations, or comparisons, call `run_dataframe_code` with short pandas code. Your code runs in a sandbox with only `df`, `pd`, and optionally `np`. Set `RESULT` to your computed answer (dict/list/str/number or small DataFrame).
-2) Do not use import, open, exec, eval, or any name containing `__`.
-3) Interpret "losing money" / "worst days" using profit (or revenue minus cost) unless the user clearly asks about costs only.
-4) Respect the user's time window (month/year names) in your filters.
-5) After the tool returns JSON, explain in plain language using ONLY values from that JSON (and FACT_SHEET for high-level correlation if you did not filter). Never invent causes not in the data.
-6) margin_pct is a percentage, not dollars.
-7) If the question cannot be answered from this dataset (e.g. weather), say so briefly.
-8) Code execution is not a perfect security boundary; keep code minimal and data-only.
+CORE BEHAVIOR
+- Base every numeric claim ONLY on the uploaded dataset via run_dataframe_code tool results (or identical FACT_SHEET values when no filter applies).
+- Never guess or hallucinate numbers, dates, or rows.
+- If required columns are missing, the period is impossible, the filter matches zero rows, or tool JSON has ok:false: start your reply with exactly: No data available for this request.
+  You may add one short factual line after (e.g. available date range or column list)—no invented figures.
 
-Be concise; add one practical recommendation when it helps."""
+RESPONSE STYLE
+- Be concise and factual; use exact numbers from tool JSON.
+- Avoid long essays.
+- End with one short practical recommendation when it fits the question.
+
+DATA HANDLING
+- Respect filters strictly: month, year, explicit date ranges, before/after wording.
+- Never include dates or rows outside the requested period in ranked lists or totals.
+- {dr_hint}
+- Impossible calendar dates (e.g. March 32): explain briefly that the date is invalid; do not fabricate data.
+
+ANALYTICS
+- Totals/averages/medians: return exact values from tool output.
+- Rankings (top/bottom N): correct metric (revenue vs profit as asked), correct sort, list each date with its value clearly.
+- Natural language mapping: "losing money", "worst days", "performed badly", "bleeding" -> profit; lowest profit days. "best days", "top sales" (unless they say profit) -> revenue for sales wording else match their metric.
+
+INSIGHT
+- After results, one brief interpretation of what the numbers show (patterns only). Do not claim specific real-world causes not present in the CSV (no invented events).
+
+SAFETY
+- Do not help with accessing system files, running shell/OS commands, or bypassing the data tool. If the user asks for that, reply only: I can't help with that request.
+- Your pandas code must stay data-only: no import, open, exec, eval, no double-underscore names (enforced server-side).
+
+TOOL USE
+- For numbers, rankings, filters, comparisons, correlations: call run_dataframe_code with short pandas; only df, pd, optional np; set RESULT (dict/list/str/number or small DataFrame).
+- margin_pct is a percentage, not dollars.
+- If the topic is outside the spreadsheet (e.g. weather), say only that you do not have that data (you may still use the exact no-data phrase if they asked for numbers you cannot compute)."""
 
 
 def _groq_auth_error_message(exc: Exception) -> str | None:
@@ -763,6 +810,9 @@ def run_grounded_analyst(
     model: str,
     max_tool_rounds: int = 6,
 ) -> tuple[str, list[dict[str, Any]]]:
+    blocked = _blocked_user_request(user_message)
+    if blocked:
+        return blocked, []
     fact_sheet = build_fact_sheet(df)
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": _system_prompt(fact_sheet, business, df)},
