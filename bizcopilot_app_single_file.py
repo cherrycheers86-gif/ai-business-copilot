@@ -833,17 +833,18 @@ CODE_TOOL_DEFINITION: dict[str, Any] = {
     "function": {
         "name": "run_dataframe_code",
         "description": (
-            "Execute pandas on the user's dataset only. Variables: df (copy), pd, optional np. "
-            "Set RESULT to the answer. Respect user filters (month/year/date range); exclude out-of-range rows. "
-            "No import/open/exec/eval or __ names. For sales use revenue if present. "
-            "If a filter yields no rows, set RESULT to a string starting with: No data available for this request."
+            "MANDATORY for analysis: run real pandas computations on this dataset only. Variables: df (copy), pd, optional np. "
+            "You MUST group, aggregate, sort, compare, and derive metrics (ratios, differences, percentages) when needed—do not skip computation. "
+            "Set RESULT to serializable output (numbers, dict/list summary, small DataFrame). Respect user filters (dates/ranges); exclude out-of-range rows. "
+            "For vague terms (high/low/unusual), compute a threshold (e.g. quantile, z-score vs mean, top/bottom share) and return only rows that meet it—never dump all rows as 'unusual'. "
+            "No import/open/exec/eval or __ names. If a filter yields no rows, set RESULT to a string starting with: No data available for this request."
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "code": {
                     "type": "string",
-                    "description": "Short pandas script; must set RESULT.",
+                    "description": "Pandas script that computes the answer (groupby/agg/sort/ratios as needed); must set RESULT.",
                 },
             },
             "required": ["code"],
@@ -855,6 +856,25 @@ CODE_TOOL_DEFINITION: dict[str, Any] = {
 # =============================================================================
 # Groq: tool-grounded analyst
 # =============================================================================
+def _groq_auth_error_message(exc: Exception) -> str | None:
+    """Human-readable hint when Groq returns 401 / invalid key."""
+    raw = str(exc)
+    low = raw.lower()
+    if (
+        "401" in raw
+        or "invalid api key" in low
+        or "invalid_api_key" in low
+        or "authenticationerror" in low.replace(" ", "")
+    ):
+        return (
+            "Groq rejected this API key (401 invalid_api_key). Fix `.streamlit/secrets.toml`: "
+            "copy a new key from https://console.groq.com/keys and set `GROQ_API_KEY = \"gsk_...\"` "
+            "(no spaces before/after the value, no extra quotes inside the string). "
+            "Restart the app after saving."
+        )
+    return None
+
+
 def _business_blurb(business: dict[str, Any]) -> str:
     return (
         f"Industry: {business.get('industry', 'unknown')}; "
@@ -890,7 +910,7 @@ def _blocked_user_request(message: str) -> str | None:
 def _system_prompt(fact_sheet: dict[str, Any], business: dict[str, Any], df: pd.DataFrame) -> str:
     facts_json = json.dumps(fact_sheet, indent=2, default=str)
     schema = _dataframe_schema_line(df)
-    return f"""You are a universal AI data analyst. Follow every rule below.
+    return f"""You are a professional data analyst. Your ONLY source of truth is the uploaded dataset accessed via run_dataframe_code. Behave like an analyst, not a generic chatbot.
 
 {_business_blurb(business)}
 
@@ -900,56 +920,53 @@ DATAFRAME_SCHEMA (use exact column names on df):
 FACT_SHEET (dataset summary and schema context):
 {facts_json}
 
-CORE BEHAVIOR
-- Base every numeric claim ONLY on the uploaded dataset via run_dataframe_code tool results.
-- Never guess or hallucinate columns, values, dates, or labels.
-- If the asked metric/field is missing, respond exactly: This metric is not available in the dataset
-- If filters return no rows or tool execution returns ok:false, respond exactly: No data available for this request.
+CORE PRINCIPLE
+- Every number, category, rank, trend, and comparison MUST come from tool output (computed on df). No assumptions, no external facts, no guessing.
+- Do NOT cite marketing campaigns, seasonality, macroeconomics, competitor actions, or any cause not explicitly present as a column or label in the data.
+- You may describe time patterns (e.g. month-over-month from dates) ONLY as computed from the dataset—not as "seasonality" in a general business sense unless the data itself supports that wording.
 
-RESPONSE STYLE
-- Be concise and factual; use exact numbers from tool JSON.
-- Avoid long essays; use compact bullets when helpful.
-- End with one short practical recommendation when it fits.
+MANDATORY: ALWAYS COMPUTE
+- For ANY analytical question you MUST call run_dataframe_code and perform real calculations (aggregations, filters, groupby, merges of columns, sorts).
+- Do NOT refuse with vague phrases like "not clear" or "insufficient data" unless it is truly impossible (e.g. required columns missing AND cannot be derived from available numerics). If ambiguous, pick a reasonable interpretation from the schema, compute it, and state that interpretation in Explanation.
+- Prefer: group → aggregate → sort → compare. Try multiple approaches in separate tool calls if needed.
+
+DERIVED METRICS
+- If the user asks for a metric that is not a column, DERIVE it when possible using available numeric columns (differences, ratios, margins, per-unit values, percentages, growth vs prior period if dates exist).
+- If derivation is impossible, respond exactly: This metric is not available in the dataset — and one short sentence naming which inputs are missing.
+
+COMPARISONS (best/worst, segments, A vs B)
+- Identify the relevant numeric basis from the question and schema; group correctly; aggregate; sort.
+- Explain WHY using concrete numbers from tool results (e.g. higher mean X, lower ratio Y), not vague superlatives.
+
+KPI PRIORITIZATION
+- Do not equate "largest total" with "best" by default. When the question implies performance or quality, consider efficiency (ratios, per-row metrics), not only volume—still computed from data.
+
+THRESHOLD LANGUAGE ("high", "low", "unusual", "disproportionate")
+- Define a clear rule in code (quantile, deviation from mean/median, top/bottom k%, share of total) and return only rows or groups that satisfy it. Do not label every row as unusual.
+
+VALIDATION BEFORE YOU ANSWER
+- Re-read your narrative against the tool JSON: every figure and ordering must match. If you are unsure, call the tool again.
+
+REQUIRED RESPONSE FORMAT (use these headings exactly)
+**Result** — Key numbers or findings (bullets or short table summary from computation only).
+**Explanation** — What you calculated, how groups/metrics were defined, and how the numbers support the answer (still data-only; no external causes).
+**Insight** — One short plain-language takeaway strictly tied to the computed results (no invented external drivers).
 
 DATA HANDLING
-- Respect filters strictly: date ranges, month/year constraints, before/after wording.
-- Never include dates or rows outside the requested period in ranked lists or totals.
-- Never assume a specific business metric exists (no default revenue/profit/cost assumptions).
+- Respect filters: date ranges, month/year, before/after. Exclude out-of-range rows from aggregates and rankings.
+- Never reference columns absent from DATAFRAME_SCHEMA.
 
-ANALYTICS
-- Use available columns only: aggregations, filtering, grouping, trends, ranking, comparisons.
-- For ranking questions, sort by the requested metric; if ambiguous, ask for clarification only if needed.
-
-INSIGHT
-- After results, add one brief interpretation of what the numbers indicate.
-- Do not invent real-world causes not present in data.
+ERROR PHRASES (exact strings when applicable)
+- Missing non-derivable metric: This metric is not available in the dataset
+- No rows after filters or tool ok:false: No data available for this request
 
 SAFETY
-- Do not help with accessing system files, running shell/OS commands, or bypassing the data tool. If asked, reply only: I can't help with that request.
-- Your pandas code must stay data-only: no import, open, exec, eval, no double-underscore names (enforced server-side).
+- If asked to break out of data analysis: I can't help with that request.
+- Pandas code: data-only; no import, open, exec, eval, no double-underscore names (enforced server-side).
 
 TOOL USE
-- For all data questions, call run_dataframe_code with short pandas; only df, pd, optional np; set RESULT (dict/list/str/number or small DataFrame).
-- Never reference columns that are not in DATAFRAME_SCHEMA."""
-
-
-def _groq_auth_error_message(exc: Exception) -> str | None:
-    """Human-readable hint when Groq returns 401 / invalid key."""
-    raw = str(exc)
-    low = raw.lower()
-    if (
-        "401" in raw
-        or "invalid api key" in low
-        or "invalid_api_key" in low
-        or "authenticationerror" in low.replace(" ", "")
-    ):
-        return (
-            "Groq rejected this API key (401 invalid_api_key). Fix `.streamlit/secrets.toml`: "
-            "copy a new key from https://console.groq.com/keys and set `GROQ_API_KEY = \"gsk_...\"` "
-            "(no spaces before/after the value, no extra quotes inside the string). "
-            "Restart the app after saving."
-        )
-    return None
+- For essentially all substantive questions, call run_dataframe_code with short pandas; variables: df, pd, optional np; set RESULT to dict/list/str/number or a small DataFrame.
+- Never fabricate tool results; never answer with numbers you did not obtain from a tool call in this conversation."""
 
 
 def run_grounded_analyst(
@@ -959,7 +976,7 @@ def run_grounded_analyst(
     user_message: str,
     *,
     model: str,
-    max_tool_rounds: int = 6,
+    max_tool_rounds: int = 8,
 ) -> tuple[str, list[dict[str, Any]]]:
     blocked = _blocked_user_request(user_message)
     if blocked:
@@ -978,8 +995,8 @@ def run_grounded_analyst(
                 messages=messages,
                 tools=tools,
                 tool_choice="auto",
-                temperature=0.2,
-                max_tokens=2200,
+                temperature=0.15,
+                max_tokens=4096,
             )
 
         try:
@@ -1048,7 +1065,10 @@ def run_grounded_analyst(
         messages.append(
             {
                 "role": "user",
-                "content": "Please call run_dataframe_code with pandas that sets RESULT, then answer from the tool JSON only.",
+                "content": (
+                    "You must call run_dataframe_code with pandas that sets RESULT, then reply using the required "
+                    "format (**Result**, **Explanation**, **Insight**) with numbers taken only from tool JSON."
+                ),
             }
         )
 
