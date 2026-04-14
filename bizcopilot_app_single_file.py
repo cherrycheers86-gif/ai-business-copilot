@@ -1,7 +1,7 @@
-# BizCopilot — Streamlit app: Gemini analyst runs AI-written pandas via restricted exec (see run_dataframe_code).
+# BizCopilot — Streamlit app: Groq analyst runs AI-written pandas via restricted exec (see run_dataframe_code).
 # Run: streamlit run bizcopilot_app_single_file.py
-# Secrets: .streamlit/secrets.toml → GEMINI_API_KEY = "..."  (optional GEMINI_MODEL)
-# Deps: pip install streamlit pandas google-generativeai altair numpy
+# Secrets: .streamlit/secrets.toml → GROQ_API_KEY = "..."  (optional GROQ_MODEL)
+# Deps: pip install streamlit pandas groq altair numpy
 
 from __future__ import annotations
 
@@ -15,9 +15,9 @@ import re
 from typing import Any
 
 import altair as alt
-import google.generativeai as genai
 import pandas as pd
 import streamlit as st
+from groq import Groq
 
 
 # =============================================================================
@@ -853,100 +853,8 @@ CODE_TOOL_DEFINITION: dict[str, Any] = {
 
 
 # =============================================================================
-# Gemini: tool-grounded analyst
+# Groq: tool-grounded analyst
 # =============================================================================
-def _gemini_tool() -> Any:
-    """Single tool declaration for google-generativeai."""
-    try:
-        from google.generativeai.types import FunctionDeclaration, Tool
-
-        fd = FunctionDeclaration(
-            name="run_dataframe_code",
-            description=CODE_TOOL_DEFINITION["function"]["description"],
-            parameters={
-                "type": "object",
-                "properties": {
-                    "code": {
-                        "type": "string",
-                        "description": CODE_TOOL_DEFINITION["function"]["parameters"]["properties"]["code"][
-                            "description"
-                        ],
-                    }
-                },
-                "required": ["code"],
-            },
-        )
-        return Tool(function_declarations=[fd])
-    except Exception:
-        return {
-            "function_declarations": [
-                {
-                    "name": "run_dataframe_code",
-                    "description": CODE_TOOL_DEFINITION["function"]["description"],
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "code": {
-                                "type": "string",
-                                "description": CODE_TOOL_DEFINITION["function"]["parameters"]["properties"]["code"][
-                                    "description"
-                                ],
-                            }
-                        },
-                        "required": ["code"],
-                    },
-                }
-            ]
-        }
-
-
-def _function_call_args_to_dict(fc: Any) -> dict[str, Any]:
-    a = getattr(fc, "args", None)
-    if a is None:
-        return {}
-    if isinstance(a, dict):
-        return a
-    try:
-        from google.protobuf.json_format import MessageToDict
-
-        return MessageToDict(a)
-    except Exception:
-        return {}
-
-
-def _gemini_response_issue(response: Any) -> str | None:
-    pf = getattr(response, "prompt_feedback", None)
-    if pf is not None:
-        br = getattr(pf, "block_reason", None)
-        if br is not None and str(br) and str(br) != "BLOCK_REASON_UNSPECIFIED":
-            return f"Request blocked by the model ({br}). Try rephrasing your question."
-    cands = getattr(response, "candidates", None) or []
-    if not cands:
-        return "The model returned no response. Try a shorter or simpler question."
-    return None
-
-
-def _gemini_auth_error_message(exc: Exception) -> str | None:
-    """Human-readable hint when Gemini rejects the API key or auth fails."""
-    raw = str(exc)
-    low = raw.lower()
-    if (
-        "api key not valid" in low
-        or "invalid api key" in low
-        or ("invalid_argument" in low.replace(" ", "") and "key" in low)
-        or "permission denied" in low
-        or "403" in raw
-        or "401" in raw
-        or "requested entity was not found" in low
-    ):
-        return (
-            "Gemini rejected this API key or could not authenticate. Fix `.streamlit/secrets.toml`: "
-            "create a key at https://aistudio.google.com/apikey and set `GEMINI_API_KEY = \"...\"` "
-            "(no spaces before/after the value). Restart the app after saving."
-        )
-    return None
-
-
 def _business_blurb(business: dict[str, Any]) -> str:
     return (
         f"Industry: {business.get('industry', 'unknown')}; "
@@ -1025,138 +933,128 @@ TOOL USE
 - Never reference columns that are not in DATAFRAME_SCHEMA."""
 
 
+def _groq_auth_error_message(exc: Exception) -> str | None:
+    """Human-readable hint when Groq returns 401 / invalid key."""
+    raw = str(exc)
+    low = raw.lower()
+    if (
+        "401" in raw
+        or "invalid api key" in low
+        or "invalid_api_key" in low
+        or "authenticationerror" in low.replace(" ", "")
+    ):
+        return (
+            "Groq rejected this API key (401 invalid_api_key). Fix `.streamlit/secrets.toml`: "
+            "copy a new key from https://console.groq.com/keys and set `GROQ_API_KEY = \"gsk_...\"` "
+            "(no spaces before/after the value, no extra quotes inside the string). "
+            "Restart the app after saving."
+        )
+    return None
+
+
 def run_grounded_analyst(
+    client: Groq,
     df: pd.DataFrame,
     business: dict[str, Any],
     user_message: str,
     *,
     model: str,
     max_tool_rounds: int = 6,
-) -> tuple[str, list[Any]]:
+) -> tuple[str, list[dict[str, Any]]]:
     blocked = _blocked_user_request(user_message)
     if blocked:
         return blocked, []
     fact_sheet = build_fact_sheet(df)
-    system_instruction = _system_prompt(fact_sheet, business, df)
-    tool = _gemini_tool()
-
-    try:
-        gen_model = genai.GenerativeModel(
-            model_name=model,
-            system_instruction=system_instruction,
-            tools=[tool],
-        )
-        chat = gen_model.start_chat(enable_automatic_function_calling=False)
-    except Exception as e:
-        auth = _gemini_auth_error_message(e)
-        if auth:
-            return auth, []
-        return "Something went wrong: " + str(e), []
-
-    try:
-        response = chat.send_message(
-            user_message,
-            generation_config=genai.types.GenerationConfig(
-                temperature=0.2,
-                max_output_tokens=8192,
-            ),
-        )
-    except Exception as e:
-        auth = _gemini_auth_error_message(e)
-        if auth:
-            return auth, []
-        return "Something went wrong: " + str(e), []
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": _system_prompt(fact_sheet, business, df)},
+        {"role": "user", "content": user_message},
+    ]
+    tools = [CODE_TOOL_DEFINITION]
 
     for _ in range(max_tool_rounds):
-        issue = _gemini_response_issue(response)
-        if issue:
-            return issue, []
+        def _chat() -> Any:
+            return client.chat.completions.create(
+                model=model,
+                messages=messages,
+                tools=tools,
+                tool_choice="auto",
+                temperature=0.2,
+                max_tokens=2200,
+            )
 
-        content = getattr(response.candidates[0], "content", None)
-        raw_parts = getattr(content, "parts", None) if content is not None else None
-        if not raw_parts:
-            return "The model returned no usable content. Try rephrasing your question.", []
+        try:
+            resp = _chat()
+        except Exception as e:
+            auth = _groq_auth_error_message(e)
+            if auth:
+                return auth, messages
+            err = str(e).lower()
+            if "tool" in err and ("validation" in err or "tool_use" in err or "400" in str(e)):
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "Retry: call run_dataframe_code with a single string field `code` only. "
+                            "Code must set RESULT and must not use import, open, exec, eval, or __."
+                        ),
+                    }
+                )
+                try:
+                    resp = _chat()
+                except Exception as e2:
+                    auth2 = _groq_auth_error_message(e2)
+                    if auth2:
+                        return auth2, messages
+                    return "Something went wrong: " + str(e2), messages
+            else:
+                return "Something went wrong: " + str(e), messages
+        choice = resp.choices[0]
+        msg = choice.message
+        tool_calls = getattr(msg, "tool_calls", None)
 
-        parts = list(raw_parts)
-        text_chunks: list[str] = []
-        function_calls: list[Any] = []
-        for part in parts:
-            if getattr(part, "text", None):
-                text_chunks.append(part.text)
-            fc = getattr(part, "function_call", None)
-            if fc is not None:
-                function_calls.append(fc)
-
-        if function_calls:
-            fr_parts: list[Any] = []
-            for fc in function_calls:
-                name = getattr(fc, "name", "") or ""
-                args = _function_call_args_to_dict(fc)
+        if tool_calls:
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": msg.content or "",
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                        }
+                        for tc in tool_calls
+                    ],
+                }
+            )
+            for tc in tool_calls:
+                name = tc.function.name
+                try:
+                    args = json.loads(tc.function.arguments or "{}")
+                except json.JSONDecodeError:
+                    args = {}
                 if name == "run_dataframe_code":
                     result = run_dataframe_code(df, str(args.get("code", "")))
                 else:
                     result = json.dumps({"ok": False, "reason": "unknown_tool", "name": name})
-                fr_parts.append(
-                    genai.protos.Part(
-                        function_response=genai.protos.FunctionResponse(
-                            name=name,
-                            response={"content": result},
-                        )
-                    )
-                )
-            try:
-                response = chat.send_message(
-                    fr_parts,
-                    generation_config=genai.types.GenerationConfig(
-                        temperature=0.2,
-                        max_output_tokens=8192,
-                    ),
-                )
-            except Exception as e:
-                auth = _gemini_auth_error_message(e)
-                if auth:
-                    return auth, []
-                low = str(e).lower()
-                if "tool" in low or "function" in low or "400" in str(e):
-                    try:
-                        response = chat.send_message(
-                            "Retry: call run_dataframe_code with a single string field `code` only. "
-                            "Code must set RESULT and must not use import, open, exec, eval, or __.",
-                            generation_config=genai.types.GenerationConfig(
-                                temperature=0.2,
-                                max_output_tokens=8192,
-                            ),
-                        )
-                    except Exception as e2:
-                        auth2 = _gemini_auth_error_message(e2)
-                        if auth2:
-                            return auth2, []
-                        return "Something went wrong: " + str(e2), []
-                else:
-                    return "Something went wrong: " + str(e), []
+                messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
             continue
 
-        text = "".join(text_chunks).strip()
+        text = (msg.content or "").strip()
         if text:
-            return text, []
+            return text, messages
 
-        try:
-            response = chat.send_message(
-                "Please call run_dataframe_code with pandas that sets RESULT, then answer from the tool JSON only.",
-                generation_config=genai.types.GenerationConfig(
-                    temperature=0.2,
-                    max_output_tokens=8192,
-                ),
-            )
-        except Exception as e:
-            auth = _gemini_auth_error_message(e)
-            if auth:
-                return auth, []
-            return "Something went wrong: " + str(e), []
+        messages.append({"role": "assistant", "content": "I need to run dataframe code to answer accurately."})
+        messages.append(
+            {
+                "role": "user",
+                "content": "Please call run_dataframe_code with pandas that sets RESULT, then answer from the tool JSON only.",
+            }
+        )
 
     return (
         "I could not finish the analysis in time. Please try a simpler question or narrow the date range.",
-        [],
+        messages,
     )
 
 
@@ -1165,17 +1063,17 @@ def run_grounded_analyst(
 # =============================================================================
 st.set_page_config(page_title="BizCopilot", layout="wide", initial_sidebar_state="expanded")
 
-if "GEMINI_API_KEY" not in st.secrets:
-    st.error("Add GEMINI_API_KEY to .streamlit/secrets.toml")
+if "GROQ_API_KEY" not in st.secrets:
+    st.error("Add GROQ_API_KEY to .streamlit/secrets.toml")
     st.stop()
 
-_gemini_key = str(st.secrets["GEMINI_API_KEY"]).strip()
-if not _gemini_key:
-    st.error("GEMINI_API_KEY is empty in .streamlit/secrets.toml after trimming spaces.")
+_groq_key = str(st.secrets["GROQ_API_KEY"]).strip()
+if not _groq_key:
+    st.error("GROQ_API_KEY is empty in .streamlit/secrets.toml after trimming spaces.")
     st.stop()
 
-genai.configure(api_key=_gemini_key)
-GEMINI_MODEL = str(st.secrets.get("GEMINI_MODEL", "gemini-2.0-flash"))
+client = Groq(api_key=_groq_key)
+GROQ_MODEL = str(st.secrets.get("GROQ_MODEL", "llama-3.3-70b-versatile"))
 
 st.markdown(STYLES, unsafe_allow_html=True)
 
@@ -1767,7 +1665,7 @@ elif nav == "AI Assistant":
         '<div class="ai-section-head"><div class="ai-orb"></div>'
         '<div><div class="ai-section-title">AI Assistant</div></div></div>'
         '<div class="ai-section-meta">'
-        + html_module.escape(GEMINI_MODEL)
+        + html_module.escape(GROQ_MODEL)
         + " · Answers grounded in your CSV via code execution</div>"
         '<p style="color:#78716c;font-size:0.88rem;margin:0.75rem 0 0 52px;line-height:1.55;">'
         "Charts for chart-style questions render below assistant replies.</p>"
@@ -1903,14 +1801,15 @@ elif nav == "AI Assistant":
         try:
             with st.spinner("Analyzing your data…"):
                 answer, _dbg = run_grounded_analyst(
+                    client,
                     full_df,
                     business,
                     effective_input,
-                    model=GEMINI_MODEL,
+                    model=GROQ_MODEL,
                 )
             response = answer
         except Exception as e:
-            response = _gemini_auth_error_message(e) or ("Something went wrong: " + str(e))
+            response = _groq_auth_error_message(e) or ("Something went wrong: " + str(e))
 
         st.session_state.messages.append({"role": "user", "content": effective_input})
         st.session_state.messages.append(
@@ -2148,14 +2047,15 @@ elif nav == "AI Assistant":
         try:
             with st.spinner("Analyzing your data…"):
                 answer, _dbg = run_grounded_analyst(
+                    client,
                     full_df,
                     business,
                     effective_input,
-                    model=GEMINI_MODEL,
+                    model=GROQ_MODEL,
                 )
             response = answer
         except Exception as e:
-            response = _gemini_auth_error_message(e) or ("Something went wrong: " + str(e))
+            response = _groq_auth_error_message(e) or ("Something went wrong: " + str(e))
 
         st.session_state.messages.append({"role": "user", "content": effective_input})
         st.session_state.messages.append(
