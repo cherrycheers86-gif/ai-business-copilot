@@ -586,93 +586,81 @@ p, span, div, label { color: inherit; }
 # Fact sheet (precomputed context)
 # =============================================================================
 def ensure_derived_columns(df: pd.DataFrame) -> pd.DataFrame:
-    out = df.copy()
-    if "profit" not in out.columns and "revenue" in out.columns and "cost" in out.columns:
-        out["profit"] = out["revenue"] - out["cost"]
-    if "margin_pct" not in out.columns and "profit" in out.columns and "revenue" in out.columns:
-        out["margin_pct"] = (out["profit"] / out["revenue"].replace(0, pd.NA) * 100).round(1)
-    return out
+    # Keep this helper as a safe copy hook; no hardcoded business derivations.
+    return df.copy()
+
+
+def detect_dataset_schema(df: pd.DataFrame) -> dict[str, Any]:
+    d = df.copy()
+    numeric_cols = [c for c in d.columns if pd.api.types.is_numeric_dtype(d[c])]
+    datetime_cols = [c for c in d.columns if pd.api.types.is_datetime64_any_dtype(d[c])]
+    categorical_cols = [c for c in d.columns if c not in numeric_cols and c not in datetime_cols]
+    columns: list[dict[str, Any]] = []
+    for c in d.columns:
+        if c in numeric_cols:
+            role = "numeric"
+        elif c in datetime_cols:
+            role = "datetime"
+        else:
+            role = "categorical"
+        sample_values = d[c].dropna().astype(str).head(3).tolist()
+        columns.append(
+            {
+                "name": str(c),
+                "dtype": str(d[c].dtype),
+                "role": role,
+                "non_null_count": int(d[c].notna().sum()),
+                "sample_values": sample_values,
+            }
+        )
+    return {
+        "columns": columns,
+        "numeric_columns": [str(c) for c in numeric_cols],
+        "datetime_columns": [str(c) for c in datetime_cols],
+        "categorical_columns": [str(c) for c in categorical_cols],
+    }
 
 
 def build_fact_sheet(df: pd.DataFrame) -> dict[str, Any]:
-    d = ensure_derived_columns(df)
-    d = d.dropna(subset=["date"])
-    if d.empty:
-        return {"error": "no_rows_after_cleaning"}
+    d = df.copy()
+    schema = detect_dataset_schema(d)
+    numeric_cols = schema["numeric_columns"]
+    datetime_cols = schema["datetime_columns"]
+    categorical_cols = schema["categorical_columns"]
 
-    d = d.sort_values("date")
-    corr = None
-    if "revenue" in d.columns and "cost" in d.columns:
-        corr = float(d["revenue"].corr(d["cost"]))
-
-    monthly_rows: list[dict[str, Any]] = []
-    g = d.groupby(d["date"].dt.to_period("M"), sort=True)
-    for period, chunk in g:
-        if chunk.empty:
+    numeric_summary: dict[str, Any] = {}
+    for c in numeric_cols[:10]:
+        s = d[c].dropna()
+        if s.empty:
             continue
-        max_profit_day = None
-        min_profit_day = None
-        if "profit" in chunk.columns:
-            max_p = chunk.loc[chunk["profit"].idxmax()]
-            min_p = chunk.loc[chunk["profit"].idxmin()]
-            max_profit_day = {"date": str(max_p["date"].date()), "profit": float(max_p["profit"])}
-            min_profit_day = {"date": str(min_p["date"].date()), "profit": float(min_p["profit"])}
-        monthly_rows.append(
-            {
-                "period": str(period),
-                "total_revenue": float(chunk["revenue"].sum()) if "revenue" in chunk else None,
-                "total_cost": float(chunk["cost"].sum()) if "cost" in chunk else None,
-                "total_profit": float(chunk["profit"].sum()) if "profit" in chunk else None,
-                "avg_daily_revenue": float(chunk["revenue"].mean()) if "revenue" in chunk else None,
-                "avg_daily_profit": float(chunk["profit"].mean()) if "profit" in chunk else None,
-                "avg_margin_pct": float(chunk["margin_pct"].mean()) if "margin_pct" in chunk else None,
-                "days_count": int(len(chunk)),
-                "max_profit_day": max_profit_day,
-                "min_profit_day": min_profit_day,
-            }
-        )
+        numeric_summary[c] = {
+            "sum": float(s.sum()),
+            "mean": float(s.mean()),
+            "median": float(s.median()),
+            "min": float(s.min()),
+            "max": float(s.max()),
+        }
 
-    top5 = []
-    if "profit" in d.columns:
-        for _, r in d.nlargest(5, "profit").iterrows():
-            top5.append(
-                {
-                    "date": str(r["date"].date()),
-                    "revenue": float(r["revenue"]) if "revenue" in d.columns else None,
-                    "cost": float(r["cost"]) if "cost" in d.columns else None,
-                    "profit": float(r["profit"]),
-                }
-            )
+    datetime_ranges: dict[str, Any] = {}
+    for c in datetime_cols[:6]:
+        s = d[c].dropna()
+        if s.empty:
+            continue
+        datetime_ranges[c] = {"min": str(s.min()), "max": str(s.max())}
 
-    max_p = d.loc[d["profit"].idxmax()] if "profit" in d.columns else None
-    min_p = d.loc[d["profit"].idxmin()] if "profit" in d.columns else None
-    max_r = d.loc[d["revenue"].idxmax()] if "revenue" in d.columns else None
+    category_samples: dict[str, Any] = {}
+    for c in categorical_cols[:8]:
+        vals = d[c].dropna().astype(str).head(5).tolist()
+        category_samples[c] = vals
 
     return {
-        "date_range": {"min": str(d["date"].min().date()), "max": str(d["date"].max().date())},
         "row_count": int(len(d)),
-        "columns_present": [c for c in d.columns.tolist()],
-        "totals": {
-            "revenue": float(d["revenue"].sum()) if "revenue" in d.columns else None,
-            "cost": float(d["cost"].sum()) if "cost" in d.columns else None,
-            "profit": float(d["profit"].sum()) if "profit" in d.columns else None,
-            "avg_daily_profit": float(d["profit"].mean()) if "profit" in d.columns else None,
-            "avg_margin_pct": float(d["margin_pct"].mean()) if "margin_pct" in d.columns else None,
-        },
-        "extrema": {
-            "max_profit": (
-                {"value": float(max_p["profit"]), "date": str(max_p["date"].date())} if max_p is not None else None
-            ),
-            "min_profit": (
-                {"value": float(min_p["profit"]), "date": str(min_p["date"].date())} if min_p is not None else None
-            ),
-            "max_revenue": (
-                {"value": float(max_r["revenue"]), "date": str(max_r["date"].date())} if max_r is not None else None
-            ),
-        },
-        "revenue_cost_correlation": corr,
-        "monthly": monthly_rows,
-        "top_5_profit_days": top5,
+        "column_count": int(len(d.columns)),
+        "columns_present": [str(c) for c in d.columns.tolist()],
+        "schema": schema,
+        "numeric_summary": numeric_summary,
+        "datetime_ranges": datetime_ranges,
+        "categorical_samples": category_samples,
     }
 
 
@@ -685,8 +673,16 @@ _FORBIDDEN_CALL_NAMES = frozenset({"eval", "exec", "compile", "__import__", "ope
 
 
 def _dataframe_schema_line(df: pd.DataFrame) -> str:
-    d = ensure_derived_columns(df)
-    return "; ".join(f"{c} ({d[c].dtype})" for c in d.columns)
+    schema = detect_dataset_schema(df)
+    out: list[str] = []
+    for c in df.columns:
+        role = "categorical"
+        if c in schema["numeric_columns"]:
+            role = "numeric"
+        elif c in schema["datetime_columns"]:
+            role = "datetime"
+        out.append(f"{c} ({role}, dtype={df[c].dtype})")
+    return "; ".join(out)
 
 
 def _validate_copilot_code(src: str) -> tuple[bool, str]:
@@ -784,7 +780,7 @@ def run_dataframe_code(df: pd.DataFrame, code: str) -> str:
     ns: dict[str, Any] = {
         "__builtins__": safe_builtins,
         "pd": pd,
-        "df": ensure_derived_columns(df.copy()),
+        "df": df.copy(),
         "RESULT": None,
     }
     try:
@@ -894,51 +890,47 @@ def _blocked_user_request(message: str) -> str | None:
 def _system_prompt(fact_sheet: dict[str, Any], business: dict[str, Any], df: pd.DataFrame) -> str:
     facts_json = json.dumps(fact_sheet, indent=2, default=str)
     schema = _dataframe_schema_line(df)
-    dr = fact_sheet.get("date_range") or {}
-    dr_hint = f"Dataset calendar span in FACT_SHEET: {dr.get('min', '?')} to {dr.get('max', '?')}. If the user omits a year, infer year from this range when filtering months."
-    return f"""You are an AI business analyst. Follow every rule below.
+    return f"""You are a universal AI data analyst. Follow every rule below.
 
 {_business_blurb(business)}
 
 DATAFRAME_SCHEMA (use exact column names on df):
 {schema}
 
-FACT_SHEET (summary only; all specific numbers must come from your latest tool run unless identical):
+FACT_SHEET (dataset summary and schema context):
 {facts_json}
 
 CORE BEHAVIOR
-- Base every numeric claim ONLY on the uploaded dataset via run_dataframe_code tool results (or identical FACT_SHEET values when no filter applies).
-- Never guess or hallucinate numbers, dates, or rows.
-- If required columns are missing, the period is impossible, the filter matches zero rows, or tool JSON has ok:false: start your reply with exactly: No data available for this request.
-  You may add one short factual line after (e.g. available date range or column list)—no invented figures.
+- Base every numeric claim ONLY on the uploaded dataset via run_dataframe_code tool results.
+- Never guess or hallucinate columns, values, dates, or labels.
+- If the asked metric/field is missing, respond exactly: This metric is not available in the dataset
+- If filters return no rows or tool execution returns ok:false, respond exactly: No data available for this request.
 
 RESPONSE STYLE
 - Be concise and factual; use exact numbers from tool JSON.
-- Avoid long essays.
-- End with one short practical recommendation when it fits the question.
+- Avoid long essays; use compact bullets when helpful.
+- End with one short practical recommendation when it fits.
 
 DATA HANDLING
-- Respect filters strictly: month, year, explicit date ranges, before/after wording.
+- Respect filters strictly: date ranges, month/year constraints, before/after wording.
 - Never include dates or rows outside the requested period in ranked lists or totals.
-- {dr_hint}
-- Impossible calendar dates (e.g. March 32): explain briefly that the date is invalid; do not fabricate data.
+- Never assume a specific business metric exists (no default revenue/profit/cost assumptions).
 
 ANALYTICS
-- Totals/averages/medians: return exact values from tool output.
-- Rankings (top/bottom N): correct metric (revenue vs profit as asked), correct sort, list each date with its value clearly.
-- Natural language mapping: "losing money", "worst days", "performed badly", "bleeding" -> profit; lowest profit days. "best days", "top sales" (unless they say profit) -> revenue for sales wording else match their metric.
+- Use available columns only: aggregations, filtering, grouping, trends, ranking, comparisons.
+- For ranking questions, sort by the requested metric; if ambiguous, ask for clarification only if needed.
 
 INSIGHT
-- After results, one brief interpretation of what the numbers show (patterns only). Do not claim specific real-world causes not present in the CSV (no invented events).
+- After results, add one brief interpretation of what the numbers indicate.
+- Do not invent real-world causes not present in data.
 
 SAFETY
-- Do not help with accessing system files, running shell/OS commands, or bypassing the data tool. If the user asks for that, reply only: I can't help with that request.
+- Do not help with accessing system files, running shell/OS commands, or bypassing the data tool. If asked, reply only: I can't help with that request.
 - Your pandas code must stay data-only: no import, open, exec, eval, no double-underscore names (enforced server-side).
 
 TOOL USE
-- For numbers, rankings, filters, comparisons, correlations: call run_dataframe_code with short pandas; only df, pd, optional np; set RESULT (dict/list/str/number or small DataFrame).
-- margin_pct is a percentage, not dollars.
-- If the topic is outside the spreadsheet (e.g. weather), say only that you do not have that data (you may still use the exact no-data phrase if they asked for numbers you cannot compute)."""
+- For all data questions, call run_dataframe_code with short pandas; only df, pd, optional np; set RESULT (dict/list/str/number or small DataFrame).
+- Never reference columns that are not in DATAFRAME_SCHEMA."""
 
 
 def _groq_auth_error_message(exc: Exception) -> str | None:
@@ -1128,18 +1120,27 @@ def get_sample_data() -> pd.DataFrame:
 
 def clean_dataframe(raw: pd.DataFrame) -> pd.DataFrame | None:
     df = raw.copy()
-    df.columns = df.columns.str.strip().str.lower()
-    if "date" not in df.columns:
-        st.error("CSV must have a date column.")
+    df.columns = [str(c).strip() for c in df.columns]
+    if df.empty:
+        st.error("The uploaded file has no rows.")
         return None
-    df["date"] = pd.to_datetime(df["date"], errors="coerce")
-    for col in ["revenue", "cost"]:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
-    df = df.dropna(subset=["date"])
-    if "revenue" in df.columns and "cost" in df.columns:
-        df["profit"] = df["revenue"] - df["cost"]
-        df["margin_pct"] = (df["profit"] / df["revenue"].replace(0, pd.NA) * 100).round(1)
+    if len(df.columns) == 0:
+        st.error("The uploaded file has no columns.")
+        return None
+
+    for col in df.columns:
+        if pd.api.types.is_datetime64_any_dtype(df[col]) or pd.api.types.is_numeric_dtype(df[col]):
+            continue
+        s = df[col]
+        parsed_dt = pd.to_datetime(s, errors="coerce")
+        dt_ratio = float(parsed_dt.notna().mean()) if len(s) else 0.0
+        if dt_ratio >= 0.8 and parsed_dt.notna().sum() >= 3:
+            df[col] = parsed_dt
+            continue
+        parsed_num = pd.to_numeric(s, errors="coerce")
+        num_ratio = float(parsed_num.notna().mean()) if len(s) else 0.0
+        if num_ratio >= 0.85:
+            df[col] = parsed_num
     return df
 
 
@@ -1225,17 +1226,21 @@ def ingest_uploaded_csv(uploaded_obj: Any) -> None:
 
 
 def monthly_summary_df(df: pd.DataFrame) -> pd.DataFrame:
-    """Month-level aggregates for Reports (display only; uses same derived columns as rest of app)."""
-    d = ensure_derived_columns(df).dropna(subset=["date"])
+    """Month-level aggregates for Reports using first datetime + numeric columns."""
+    d = df.copy()
+    schema = detect_dataset_schema(d)
+    if not schema["datetime_columns"] or not schema["numeric_columns"]:
+        return pd.DataFrame()
+    dt_col = schema["datetime_columns"][0]
+    d = d.dropna(subset=[dt_col])
     if d.empty:
         return pd.DataFrame()
-    d = d.copy()
-    d["_p"] = d["date"].dt.to_period("M")
+    d["_p"] = d[dt_col].dt.to_period("M")
     g = d.groupby("_p", sort=True)
-    parts: dict[str, Any] = {"days": g["date"].count()}
-    for col in ("revenue", "cost", "profit"):
+    parts: dict[str, Any] = {"rows": g[dt_col].count()}
+    for col in schema["numeric_columns"][:4]:
         if col in d.columns:
-            parts[col] = g[col].sum()
+            parts[f"{col}_sum"] = g[col].sum()
     out = pd.DataFrame(parts).reset_index()
     out["_p"] = out["_p"].astype(str)
     return out.rename(columns={"_p": "month"})
@@ -1243,26 +1248,27 @@ def monthly_summary_df(df: pd.DataFrame) -> pd.DataFrame:
 
 def build_report_text(df: pd.DataFrame, business: dict[str, Any]) -> str:
     fs = build_fact_sheet(df)
+    schema = fs.get("schema") or {}
     lines = [
         "BizCopilot — summary report",
         "Business: " + str(business.get("name", "—")),
         "",
         "Dataset: " + str(fs.get("row_count", 0)) + " rows",
+        "Columns: " + str(fs.get("column_count", 0)),
     ]
-    dr = fs.get("date_range") or {}
-    if dr:
-        lines.append("Range: " + str(dr.get("min")) + " to " + str(dr.get("max")))
-    tot = fs.get("totals") or {}
-    if tot.get("revenue") is not None:
-        lines.append("Total revenue: $" + f"{tot['revenue']:,.2f}")
-    if tot.get("cost") is not None:
-        lines.append("Total cost: $" + f"{tot['cost']:,.2f}")
-    if tot.get("profit") is not None:
-        lines.append("Total profit: $" + f"{tot['profit']:,.2f}")
-    if tot.get("avg_margin_pct") is not None:
-        lines.append("Average margin %: " + str(round(tot["avg_margin_pct"], 2)))
+    lines.append("Numeric columns: " + ", ".join(schema.get("numeric_columns", [])[:8]))
+    lines.append("Datetime columns: " + ", ".join(schema.get("datetime_columns", [])[:6]))
+    lines.append("Categorical columns: " + ", ".join(schema.get("categorical_columns", [])[:8]))
     lines.append("")
-    lines.append("Monthly (automated)")
+    lines.append("Numeric summary (automated)")
+    num_sum = fs.get("numeric_summary") or {}
+    if num_sum:
+        for col, vals in num_sum.items():
+            lines.append(
+                f"- {col}: sum={vals.get('sum')}, mean={vals.get('mean')}, median={vals.get('median')}, min={vals.get('min')}, max={vals.get('max')}"
+            )
+    lines.append("")
+    lines.append("Monthly summary (automated if datetime exists)")
     mdf = monthly_summary_df(df)
     if not mdf.empty:
         lines.append(mdf.to_string(index=False))
@@ -1359,17 +1365,31 @@ with st.sidebar:
         st.success("Sample data loaded")
     if st.session_state.df is not None:
         _df = st.session_state.df
+        _sc = detect_dataset_schema(_df)
+        _dt = _sc["datetime_columns"][0] if _sc["datetime_columns"] else None
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown('<div class="section-label">Dataset</div>', unsafe_allow_html=True)
+        date_bits = ""
+        if _dt:
+            _dmin = _df[_dt].dropna().min()
+            _dmax = _df[_dt].dropna().max()
+            _from = str(_dmin.date()) if pd.notna(_dmin) else "—"
+            _to = str(_dmax.date()) if pd.notna(_dmax) else "—"
+            date_bits = (
+                '<div class="sidebar-stat">From <span>'
+                + _from
+                + "</span></div>"
+                '<div class="sidebar-stat">To <span>'
+                + _to
+                + "</span></div>"
+            )
         st.markdown(
             '<div class="sidebar-stat">Records <span>'
             + str(len(_df))
             + "</span></div>"
-            '<div class="sidebar-stat">From <span>'
-            + str(_df["date"].min().date())
-            + "</span></div>"
-            '<div class="sidebar-stat">To <span>'
-            + str(_df["date"].max().date())
+            + date_bits
+            + '<div class="sidebar-stat">Columns <span>'
+            + str(len(_df.columns))
             + "</span></div>",
             unsafe_allow_html=True,
         )
@@ -1412,7 +1432,12 @@ if st.session_state.df is None:
     st.stop()
 
 df = st.session_state.df
-_range = str(df["date"].min().date()) + " → " + str(df["date"].max().date())
+_main_sc = detect_dataset_schema(df)
+if _main_sc["datetime_columns"]:
+    _dt_main = _main_sc["datetime_columns"][0]
+    _range = str(df[_dt_main].min().date()) + " → " + str(df[_dt_main].max().date())
+else:
+    _range = "No datetime column"
 nav = str(st.session_state.get("main_nav", "Dashboard"))
 
 st.markdown(
@@ -1438,7 +1463,11 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-_dash = ensure_derived_columns(df)
+_dash = df.copy()
+_schema = detect_dataset_schema(_dash)
+_num_cols = _schema["numeric_columns"]
+_dt_cols = _schema["datetime_columns"]
+_cat_cols = _schema["categorical_columns"]
 
 if nav == "Dashboard":
     st.markdown(
@@ -1449,36 +1478,62 @@ if nav == "Dashboard":
         "</div>",
         unsafe_allow_html=True,
     )
-    rev_s = f"${_dash['revenue'].sum():,.0f}" if "revenue" in _dash.columns else "—"
-    cost_s = f"${_dash['cost'].sum():,.0f}" if "cost" in _dash.columns else "—"
-    prof_s = f"${_dash['profit'].sum():,.0f}" if "profit" in _dash.columns else "—"
-    marg_s = (str(round(_dash["margin_pct"].mean(), 1)) + "%") if "margin_pct" in _dash.columns else "—"
-    st.markdown(
-        '<div class="kpi-grid">'
-        '<div class="kpi-card"><div class="lbl">Total revenue</div><div class="val">'
-        + html_module.escape(rev_s)
-        + '</div><div class="sub">Full dataset</div></div>'
-        '<div class="kpi-card"><div class="lbl">Total cost</div><div class="val">'
-        + html_module.escape(cost_s)
-        + '</div><div class="sub">Full dataset</div></div>'
-        '<div class="kpi-card"><div class="lbl">Total profit</div><div class="val">'
-        + html_module.escape(prof_s)
-        + '</div><div class="sub">Full dataset</div></div>'
-        '<div class="kpi-card"><div class="lbl">Avg margin</div><div class="val">'
-        + html_module.escape(marg_s)
-        + '</div><div class="sub">Mean of daily margin %</div></div>'
-        "</div>",
-        unsafe_allow_html=True,
-    )
-    dash_metric_opts = [c for c in ["revenue", "cost", "profit"] if c in _dash.columns]
-    dm = "revenue"
-    if dash_metric_opts:
-        dm = st.selectbox("Trend metric", dash_metric_opts, index=0, key="dash_metric_sel")
-    st.markdown('<div class="chart-card"><h3>Performance trend</h3></div>', unsafe_allow_html=True)
-    if dm in _dash.columns:
-        st.line_chart(_dash.set_index("date")[[dm]], height=280)
+    if _num_cols:
+        cards = []
+        for c in _num_cols[:4]:
+            s = _dash[c].dropna()
+            if s.empty:
+                val = "—"
+                sub = "No numeric rows"
+            else:
+                val = f"{float(s.sum()):,.2f}"
+                sub = "Avg " + f"{float(s.mean()):,.2f}"
+            cards.append(
+                '<div class="kpi-card"><div class="lbl">'
+                + html_module.escape(str(c))
+                + '</div><div class="val">'
+                + html_module.escape(val)
+                + '</div><div class="sub">'
+                + html_module.escape(sub)
+                + "</div></div>"
+            )
+        st.markdown('<div class="kpi-grid">' + "".join(cards) + "</div>", unsafe_allow_html=True)
+    else:
+        st.info("No numeric columns detected for KPI cards.")
+
+    st.markdown('<div class="chart-card"><h3>Trend</h3></div>', unsafe_allow_html=True)
+    if _dt_cols and _num_cols:
+        dt_col = _dt_cols[0]
+        dm = st.selectbox("Trend metric", _num_cols, index=0, key="dash_metric_sel")
+        td = _dash.dropna(subset=[dt_col]).sort_values(dt_col)
+        if not td.empty and dm in td.columns:
+            st.line_chart(td.set_index(dt_col)[[dm]], height=280)
+        else:
+            st.info("Not enough rows for trend chart.")
+    elif _num_cols:
+        dm = st.selectbox("Trend metric", _num_cols, index=0, key="dash_metric_sel")
+        st.line_chart(_dash[[dm]], height=280)
+    else:
+        st.info("No chartable columns detected.")
+
+    st.markdown('<div class="report-block">', unsafe_allow_html=True)
+    st.markdown("#### Detected schema")
+    schema_rows = [
+        {"column": c["name"], "role": c["role"], "dtype": c["dtype"], "sample": ", ".join(c["sample_values"])}
+        for c in _schema["columns"]
+    ]
+    st.dataframe(pd.DataFrame(schema_rows), use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown('<div class="report-block">', unsafe_allow_html=True)
+    st.markdown("#### Data preview")
+    st.dataframe(_dash.head(5), use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
     with st.expander("View raw data"):
-        st.dataframe(_dash.sort_values("date", ascending=False), use_container_width=True)
+        if _dt_cols:
+            st.dataframe(_dash.sort_values(_dt_cols[0], ascending=False), use_container_width=True)
+        else:
+            st.dataframe(_dash, use_container_width=True)
 
 elif nav == "Analytics":
     st.markdown(
@@ -1489,27 +1544,44 @@ elif nav == "Analytics":
         "</div>",
         unsafe_allow_html=True,
     )
-    dmin = df["date"].min().date()
-    dmax = df["date"].max().date()
-    c1, c2 = st.columns([2, 1])
-    with c1:
-        dr_input = st.date_input("Date range", value=(dmin, dmax), min_value=dmin, max_value=dmax, key="analytics_dr")
-    with c2:
-        metric_opts = [c for c in ["revenue", "cost", "profit"] if c in df.columns]
-        if not metric_opts:
-            st.warning("No revenue, cost, or profit columns found.")
-            an_metric = "revenue"
-        else:
-            an_metric = st.selectbox("Metric", metric_opts, key="analytics_metric_sel")
-    if isinstance(dr_input, (tuple, list)) and len(dr_input) == 2:
-        ra, rb = dr_input[0], dr_input[1]
+    if not _num_cols:
+        st.info("Analytics view needs at least one numeric column.")
+        filt = _dash.copy()
+        an_metric = ""
     else:
-        ra = rb = dr_input
-    filt = df[(df["date"].dt.date >= ra) & (df["date"].dt.date <= rb)].copy()
-    filt = ensure_derived_columns(filt)
+        c1, c2 = st.columns([2, 1])
+        with c1:
+            if _dt_cols:
+                dt_col = _dt_cols[0]
+                dmin = _dash[dt_col].dropna().min().date()
+                dmax = _dash[dt_col].dropna().max().date()
+                dr_input = st.date_input(
+                    "Date range",
+                    value=(dmin, dmax),
+                    min_value=dmin,
+                    max_value=dmax,
+                    key="analytics_dr",
+                )
+            else:
+                dt_col = None
+                dr_input = None
+                st.caption("No datetime column detected. Showing full dataset.")
+        with c2:
+            an_metric = st.selectbox("Metric", _num_cols, key="analytics_metric_sel")
+
+        filt = _dash.copy()
+        if dt_col and dr_input is not None:
+            if isinstance(dr_input, (tuple, list)) and len(dr_input) == 2:
+                ra, rb = dr_input[0], dr_input[1]
+            else:
+                ra = rb = dr_input
+            filt = filt[(filt[dt_col].dt.date >= ra) & (filt[dt_col].dt.date <= rb)].copy()
     st.markdown('<div class="chart-card"><h3>' + html_module.escape(an_metric.title()) + " over time</h3></div>", unsafe_allow_html=True)
-    if an_metric in filt.columns and not filt.empty:
-        st.line_chart(filt.set_index("date")[[an_metric]], height=280)
+    if an_metric in filt.columns and not filt.empty and _dt_cols:
+        dt_col2 = _dt_cols[0]
+        st.line_chart(filt.sort_values(dt_col2).set_index(dt_col2)[[an_metric]], height=280)
+    elif an_metric in filt.columns and not filt.empty:
+        st.line_chart(filt[[an_metric]], height=280)
     elif filt.empty:
         st.info("No rows in this date range.")
     st.markdown('<div class="rank-grid">', unsafe_allow_html=True)
@@ -1519,7 +1591,7 @@ elif nav == "Analytics":
         st.markdown("#### Top 5 days")
         if an_metric in filt.columns and not filt.empty:
             top5 = filt.assign(_v=filt[an_metric]).nlargest(5, "_v")[
-                ["date", an_metric]
+                ([_dt_cols[0]] if _dt_cols else []) + [an_metric]
             ].rename(columns={an_metric: "value"})
             st.dataframe(top5, use_container_width=True)
         else:
@@ -1530,7 +1602,7 @@ elif nav == "Analytics":
         st.markdown("#### Lowest 5 days")
         if an_metric in filt.columns and not filt.empty:
             bot5 = filt.assign(_v=filt[an_metric]).nsmallest(5, "_v")[
-                ["date", an_metric]
+                ([_dt_cols[0]] if _dt_cols else []) + [an_metric]
             ].rename(columns={an_metric: "value"})
             st.dataframe(bot5, use_container_width=True)
         else:
@@ -1559,20 +1631,21 @@ elif nav == "Reports":
     st.markdown('<div class="report-block">', unsafe_allow_html=True)
     st.markdown("#### Key insights")
     insights: list[str] = []
-    dr_fs = fs.get("date_range") or {}
-    if dr_fs:
-        insights.append("Data spans " + str(dr_fs.get("min")) + " to " + str(dr_fs.get("max")) + ".")
-    tot = fs.get("totals") or {}
-    if tot.get("profit") is not None:
-        insights.append("Total profit in file: $" + f"{tot['profit']:,.0f}.")
-    if tot.get("avg_margin_pct") is not None:
-        insights.append("Average daily margin: " + str(round(tot["avg_margin_pct"], 2)) + "%.")
-    ext = fs.get("extrema") or {}
-    mp = ext.get("max_profit")
-    if isinstance(mp, dict) and mp.get("date"):
-        insights.append("Best profit day: " + str(mp["date"]) + " ($" + f"{float(mp['value']):,.0f}" + ").")
+    sc = fs.get("schema") or {}
+    insights.append("Rows: " + str(fs.get("row_count", 0)) + " · Columns: " + str(fs.get("column_count", 0)))
+    if sc.get("datetime_columns"):
+        insights.append("Datetime fields detected: " + ", ".join(sc.get("datetime_columns", [])[:4]) + ".")
+    if sc.get("numeric_columns"):
+        insights.append("Numeric fields detected: " + ", ".join(sc.get("numeric_columns", [])[:6]) + ".")
+    ns = fs.get("numeric_summary") or {}
+    if ns:
+        first_col = next(iter(ns.keys()))
+        first_vals = ns[first_col]
+        insights.append(
+            f"{first_col}: mean={first_vals.get('mean'):.2f}, min={first_vals.get('min'):.2f}, max={first_vals.get('max'):.2f}."
+        )
     if not insights:
-        insights.append("Upload more history or additional columns for richer insights.")
+        insights.append("Upload more rows for richer insights.")
     st.markdown("<ul>" + "".join("<li>" + html_module.escape(s) + "</li>" for s in insights) + "</ul>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
     report_txt = build_report_text(df, business)
@@ -1600,12 +1673,22 @@ elif nav == "AI Assistant":
         unsafe_allow_html=True,
     )
     sug_cols = st.columns(4)
-    suggestions = [
-        "Top 5 revenue days",
-        "Worst profit days",
-        "Total profit this period",
-        "Revenue vs cost chart",
-    ]
+    if _num_cols:
+        m0 = _num_cols[0]
+        m1 = _num_cols[1] if len(_num_cols) > 1 else _num_cols[0]
+        suggestions = [
+            f"Top 5 {m0} rows",
+            f"Lowest {m0} rows",
+            f"Average {m0} by month",
+            f"{m0} vs {m1} trend",
+        ]
+    else:
+        suggestions = [
+            "Show row count by category",
+            "List unique values per column",
+            "Summarize this dataset",
+            "Show missing values by column",
+        ]
     for i, s in enumerate(suggestions):
         with sug_cols[i]:
             if st.button(s, key="sug_" + str(i), use_container_width=True):
@@ -1620,10 +1703,10 @@ elif nav == "AI Assistant":
   <h3>Ask a question</h3>
   <p>Use a suggestion above or type below. Switch sections anytime from the sidebar.</p>
   <div class="pill-grid">
-    <span class="pill-hint">Total revenue this period</span>
-    <span class="pill-hint">5 lowest sales days in February</span>
-    <span class="pill-hint">Revenue vs expenses chart</span>
-    <span class="pill-hint">How is my business doing?</span>
+    <span class="pill-hint">Top 5 values for a numeric column</span>
+    <span class="pill-hint">Average by month for a date column</span>
+    <span class="pill-hint">Compare two numeric columns</span>
+    <span class="pill-hint">Summarize this dataset</span>
   </div>
 </div>
 """,
@@ -1713,6 +1796,35 @@ elif nav == "AI Assistant":
         show_multi = False
         chart_kind_out: str | None = None
         pie_source_out: list[dict[str, Any]] | None = None
+
+        # Universal path: let the AI generate pandas for the actual schema.
+        try:
+            with st.spinner("Analyzing your data…"):
+                answer, _dbg = run_grounded_analyst(
+                    client,
+                    full_df,
+                    business,
+                    effective_input,
+                    model=GROQ_MODEL,
+                )
+            response = answer
+        except Exception as e:
+            response = _groq_auth_error_message(e) or ("Something went wrong: " + str(e))
+
+        st.session_state.messages.append({"role": "user", "content": effective_input})
+        st.session_state.messages.append(
+            {
+                "role": "assistant",
+                "content": response,
+                "chart": chart_df_out,
+                "chart_metric": chart_metric_out,
+                "chart_type": chart_type_out,
+                "show_multi": show_multi,
+                "chart_kind": chart_kind_out,
+                "pie_source": pie_source_out,
+            }
+        )
+        st.rerun()
 
         specific_date = extract_specific_date(text)
         is_asking_total_month = (has_word(text, "total") or has_word(text, "sum")) and any(
