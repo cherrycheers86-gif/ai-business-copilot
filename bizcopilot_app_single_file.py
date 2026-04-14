@@ -419,6 +419,165 @@ p, span, div, label { color: inherit; }
   color: var(--teal-dim);
   font-weight: 600;
 }
+
+.page-head {
+  margin-bottom: 1.75rem;
+}
+.page-head-kicker {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin-bottom: 0.35rem;
+}
+.page-head-title {
+  font-family: var(--font-display);
+  font-size: 1.65rem;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+  margin: 0 0 0.35rem 0;
+}
+.page-head-desc {
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: 0;
+  max-width: 640px;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.kpi-card {
+  background: var(--card);
+  border: 1px solid var(--line2);
+  border-radius: var(--radius);
+  padding: 1.2rem 1.35rem;
+  box-shadow: var(--shadow);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.kpi-card:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
+.kpi-card .lbl {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin-bottom: 0.5rem;
+}
+.kpi-card .val {
+  font-family: var(--font-display);
+  font-size: 1.55rem;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.2;
+}
+.kpi-card .sub {
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+  margin-top: 0.35rem;
+}
+
+.chart-card {
+  background: var(--card);
+  border: 1px solid var(--line2);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.35rem;
+  box-shadow: var(--shadow);
+  margin-bottom: 1.5rem;
+}
+.chart-card h3 {
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin: 0 0 1rem 0;
+}
+
+.analytics-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+  margin-bottom: 1.25rem;
+}
+
+.rank-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.25rem;
+  margin-top: 0.5rem;
+}
+.rank-card {
+  background: var(--card);
+  border: 1px solid var(--line2);
+  border-radius: var(--radius);
+  padding: 1.15rem 1.25rem;
+  box-shadow: var(--shadow);
+}
+.rank-card h4 {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0 0 0.75rem 0;
+}
+
+.ai-page-wrap {
+  background: linear-gradient(180deg, rgba(255,255,255,0.72) 0%, rgba(251,250,247,0.5) 100%);
+  border: 1px solid var(--line2);
+  border-radius: var(--radius);
+  padding: 1.5rem 1.5rem 1.25rem 1.5rem;
+  box-shadow: var(--shadow);
+  margin-bottom: 1rem;
+}
+.suggest-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.report-block {
+  background: var(--card);
+  border: 1px solid var(--line2);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.4rem;
+  box-shadow: var(--shadow);
+  margin-bottom: 1.25rem;
+}
+.report-block h3 {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0 0 0.75rem 0;
+}
+.report-block ul { margin: 0.25rem 0 0 1.1rem; color: var(--ink-mid); line-height: 1.65; }
+
+[data-testid="stSidebar"] [data-testid="stRadio"] > div { flex-direction: column !important; gap: 0.35rem !important; }
+[data-testid="stSidebar"] [data-testid="stRadio"] label {
+  border: 1px solid var(--line2) !important;
+  border-radius: 12px !important;
+  padding: 0.55rem 0.75rem !important;
+  background: rgba(255,255,255,0.65) !important;
+  margin: 0 !important;
+  font-weight: 500 !important;
+  font-size: 0.875rem !important;
+}
+[data-testid="stSidebar"] [data-testid="stRadio"] label[data-baseweb="radio"] {
+  width: 100%;
+}
 </style>
 """
 
@@ -932,6 +1091,7 @@ for key, default in {
     "business": {},
     "messages": [],
     "df": None,
+    "pending_question": None,
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -1064,6 +1224,53 @@ def ingest_uploaded_csv(uploaded_obj: Any) -> None:
         st.error("Could not read file: " + str(e))
 
 
+def monthly_summary_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Month-level aggregates for Reports (display only; uses same derived columns as rest of app)."""
+    d = ensure_derived_columns(df).dropna(subset=["date"])
+    if d.empty:
+        return pd.DataFrame()
+    d = d.copy()
+    d["_p"] = d["date"].dt.to_period("M")
+    g = d.groupby("_p", sort=True)
+    parts: dict[str, Any] = {"days": g["date"].count()}
+    for col in ("revenue", "cost", "profit"):
+        if col in d.columns:
+            parts[col] = g[col].sum()
+    out = pd.DataFrame(parts).reset_index()
+    out["_p"] = out["_p"].astype(str)
+    return out.rename(columns={"_p": "month"})
+
+
+def build_report_text(df: pd.DataFrame, business: dict[str, Any]) -> str:
+    fs = build_fact_sheet(df)
+    lines = [
+        "BizCopilot — summary report",
+        "Business: " + str(business.get("name", "—")),
+        "",
+        "Dataset: " + str(fs.get("row_count", 0)) + " rows",
+    ]
+    dr = fs.get("date_range") or {}
+    if dr:
+        lines.append("Range: " + str(dr.get("min")) + " to " + str(dr.get("max")))
+    tot = fs.get("totals") or {}
+    if tot.get("revenue") is not None:
+        lines.append("Total revenue: $" + f"{tot['revenue']:,.2f}")
+    if tot.get("cost") is not None:
+        lines.append("Total cost: $" + f"{tot['cost']:,.2f}")
+    if tot.get("profit") is not None:
+        lines.append("Total profit: $" + f"{tot['profit']:,.2f}")
+    if tot.get("avg_margin_pct") is not None:
+        lines.append("Average margin %: " + str(round(tot["avg_margin_pct"], 2)))
+    lines.append("")
+    lines.append("Monthly (automated)")
+    mdf = monthly_summary_df(df)
+    if not mdf.empty:
+        lines.append(mdf.to_string(index=False))
+    else:
+        lines.append("No monthly rows.")
+    return "\n".join(lines)
+
+
 if st.session_state.page == "auth":
     st.markdown(
         """
@@ -1166,9 +1373,16 @@ with st.sidebar:
             + "</span></div>",
             unsafe_allow_html=True,
         )
+        st.markdown('<div class="section-label">Workspace</div>', unsafe_allow_html=True)
+        st.radio(
+            "Go to",
+            ["Dashboard", "Analytics", "AI Assistant", "Reports"],
+            key="main_nav",
+            label_visibility="collapsed",
+        )
     st.markdown("<br><br>", unsafe_allow_html=True)
     if st.button("Sign Out", use_container_width=True, key="signout_sidebar"):
-        for key in ["page", "user", "business", "messages", "df"]:
+        for key in ["page", "user", "business", "messages", "df", "main_nav", "pending_question"]:
             if key in st.session_state:
                 del st.session_state[key]
         st.rerun()
@@ -1199,6 +1413,7 @@ if st.session_state.df is None:
 
 df = st.session_state.df
 _range = str(df["date"].min().date()) + " → " + str(df["date"].max().date())
+nav = str(st.session_state.get("main_nav", "Dashboard"))
 
 st.markdown(
     '<div class="hero-strip">'
@@ -1223,306 +1438,486 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.markdown('<div class="section-label">Performance</div>', unsafe_allow_html=True)
-st.markdown(
-    "<h1>Snapshot</h1>"
-    '<p style="color:#78716c;font-size:0.9rem;margin:-0.2rem 0 1rem 0;">KPIs and daily trend from your current file.</p>',
-    unsafe_allow_html=True,
-)
-col1, col2, col3, col4 = st.columns(4)
-if "revenue" in df.columns:
-    col1.metric("Total revenue", "$" + f"{df['revenue'].sum():,.0f}")
-if "cost" in df.columns:
-    col2.metric("Total costs", "$" + f"{df['cost'].sum():,.0f}")
-if "profit" in df.columns:
-    col3.metric("Total profit", "$" + f"{df['profit'].sum():,.0f}")
-if "margin_pct" in df.columns:
-    col4.metric("Avg margin", str(round(df["margin_pct"].mean(), 1)) + "%")
+_dash = ensure_derived_columns(df)
 
-st.markdown('<div class="section-label">Trend</div>', unsafe_allow_html=True)
-c1, c2 = st.columns([1, 5])
-with c1:
-    metric_choice = st.selectbox("Metric", ["revenue", "cost", "profit"], label_visibility="collapsed")
-chart_cols = [c for c in [metric_choice] if c in df.columns]
-if chart_cols:
-    st.line_chart(df.set_index("date")[chart_cols], height=260)
-
-with st.expander("View raw data"):
-    st.dataframe(df.sort_values("date", ascending=False), use_container_width=True)
-
-st.markdown("<hr>", unsafe_allow_html=True)
-st.markdown(
-    '<div class="ai-section-wrap">'
-    '<div class="ai-section-head"><div class="ai-orb"></div>'
-    '<div><div class="ai-section-title">AI business copilot</div></div></div>'
-    '<div class="ai-section-meta">'
-    + html_module.escape(GROQ_MODEL)
-    + " · AI writes pandas; answers come from executed code on your CSV</div>"
-    '<p style="color:#78716c;font-size:0.88rem;margin:0.75rem 0 0 0;line-height:1.55;">'
-    "Ask open-ended questions—the model generates analysis code. Chart-style questions still use the quick chart path below replies.</p>"
-    "</div>",
-    unsafe_allow_html=True,
-)
-
-if not st.session_state.messages:
+if nav == "Dashboard":
     st.markdown(
-        """
+        '<div class="page-head">'
+        '<div class="page-head-kicker">Overview</div>'
+        '<div class="page-head-title">Dashboard</div>'
+        '<p class="page-head-desc">Key performance indicators and daily trend for your connected file.</p>'
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    rev_s = f"${_dash['revenue'].sum():,.0f}" if "revenue" in _dash.columns else "—"
+    cost_s = f"${_dash['cost'].sum():,.0f}" if "cost" in _dash.columns else "—"
+    prof_s = f"${_dash['profit'].sum():,.0f}" if "profit" in _dash.columns else "—"
+    marg_s = (str(round(_dash["margin_pct"].mean(), 1)) + "%") if "margin_pct" in _dash.columns else "—"
+    st.markdown(
+        '<div class="kpi-grid">'
+        '<div class="kpi-card"><div class="lbl">Total revenue</div><div class="val">'
+        + html_module.escape(rev_s)
+        + '</div><div class="sub">Full dataset</div></div>'
+        '<div class="kpi-card"><div class="lbl">Total cost</div><div class="val">'
+        + html_module.escape(cost_s)
+        + '</div><div class="sub">Full dataset</div></div>'
+        '<div class="kpi-card"><div class="lbl">Total profit</div><div class="val">'
+        + html_module.escape(prof_s)
+        + '</div><div class="sub">Full dataset</div></div>'
+        '<div class="kpi-card"><div class="lbl">Avg margin</div><div class="val">'
+        + html_module.escape(marg_s)
+        + '</div><div class="sub">Mean of daily margin %</div></div>'
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    dash_metric_opts = [c for c in ["revenue", "cost", "profit"] if c in _dash.columns]
+    dm = "revenue"
+    if dash_metric_opts:
+        dm = st.selectbox("Trend metric", dash_metric_opts, index=0, key="dash_metric_sel")
+    st.markdown('<div class="chart-card"><h3>Performance trend</h3></div>', unsafe_allow_html=True)
+    if dm in _dash.columns:
+        st.line_chart(_dash.set_index("date")[[dm]], height=280)
+    with st.expander("View raw data"):
+        st.dataframe(_dash.sort_values("date", ascending=False), use_container_width=True)
+
+elif nav == "Analytics":
+    st.markdown(
+        '<div class="page-head">'
+        '<div class="page-head-kicker">Explore</div>'
+        '<div class="page-head-title">Analytics</div>'
+        '<p class="page-head-desc">Filter by date range, pick a metric, and inspect extremes.</p>'
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    dmin = df["date"].min().date()
+    dmax = df["date"].max().date()
+    c1, c2 = st.columns([2, 1])
+    with c1:
+        dr_input = st.date_input("Date range", value=(dmin, dmax), min_value=dmin, max_value=dmax, key="analytics_dr")
+    with c2:
+        metric_opts = [c for c in ["revenue", "cost", "profit"] if c in df.columns]
+        if not metric_opts:
+            st.warning("No revenue, cost, or profit columns found.")
+            an_metric = "revenue"
+        else:
+            an_metric = st.selectbox("Metric", metric_opts, key="analytics_metric_sel")
+    if isinstance(dr_input, (tuple, list)) and len(dr_input) == 2:
+        ra, rb = dr_input[0], dr_input[1]
+    else:
+        ra = rb = dr_input
+    filt = df[(df["date"].dt.date >= ra) & (df["date"].dt.date <= rb)].copy()
+    filt = ensure_derived_columns(filt)
+    st.markdown('<div class="chart-card"><h3>' + html_module.escape(an_metric.title()) + " over time</h3></div>", unsafe_allow_html=True)
+    if an_metric in filt.columns and not filt.empty:
+        st.line_chart(filt.set_index("date")[[an_metric]], height=280)
+    elif filt.empty:
+        st.info("No rows in this date range.")
+    st.markdown('<div class="rank-grid">', unsafe_allow_html=True)
+    rc1, rc2 = st.columns(2)
+    with rc1:
+        st.markdown('<div class="rank-card">', unsafe_allow_html=True)
+        st.markdown("#### Top 5 days")
+        if an_metric in filt.columns and not filt.empty:
+            top5 = filt.assign(_v=filt[an_metric]).nlargest(5, "_v")[
+                ["date", an_metric]
+            ].rename(columns={an_metric: "value"})
+            st.dataframe(top5, use_container_width=True)
+        else:
+            st.caption("No data.")
+        st.markdown("</div>", unsafe_allow_html=True)
+    with rc2:
+        st.markdown('<div class="rank-card">', unsafe_allow_html=True)
+        st.markdown("#### Lowest 5 days")
+        if an_metric in filt.columns and not filt.empty:
+            bot5 = filt.assign(_v=filt[an_metric]).nsmallest(5, "_v")[
+                ["date", an_metric]
+            ].rename(columns={an_metric: "value"})
+            st.dataframe(bot5, use_container_width=True)
+        else:
+            st.caption("No data.")
+        st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+elif nav == "Reports":
+    st.markdown(
+        '<div class="page-head">'
+        '<div class="page-head-kicker">Export</div>'
+        '<div class="page-head-title">Reports</div>'
+        '<p class="page-head-desc">Monthly rollups, quick insights, and downloadable summary.</p>'
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    fs = build_fact_sheet(df)
+    st.markdown('<div class="report-block">', unsafe_allow_html=True)
+    st.markdown("#### Monthly summary")
+    mdf = monthly_summary_df(df)
+    if not mdf.empty:
+        st.dataframe(mdf, use_container_width=True)
+    else:
+        st.caption("No monthly rows to display.")
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown('<div class="report-block">', unsafe_allow_html=True)
+    st.markdown("#### Key insights")
+    insights: list[str] = []
+    dr_fs = fs.get("date_range") or {}
+    if dr_fs:
+        insights.append("Data spans " + str(dr_fs.get("min")) + " to " + str(dr_fs.get("max")) + ".")
+    tot = fs.get("totals") or {}
+    if tot.get("profit") is not None:
+        insights.append("Total profit in file: $" + f"{tot['profit']:,.0f}.")
+    if tot.get("avg_margin_pct") is not None:
+        insights.append("Average daily margin: " + str(round(tot["avg_margin_pct"], 2)) + "%.")
+    ext = fs.get("extrema") or {}
+    mp = ext.get("max_profit")
+    if isinstance(mp, dict) and mp.get("date"):
+        insights.append("Best profit day: " + str(mp["date"]) + " ($" + f"{float(mp['value']):,.0f}" + ").")
+    if not insights:
+        insights.append("Upload more history or additional columns for richer insights.")
+    st.markdown("<ul>" + "".join("<li>" + html_module.escape(s) + "</li>" for s in insights) + "</ul>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+    report_txt = build_report_text(df, business)
+    st.download_button(
+        label="Download summary (.txt)",
+        data=report_txt,
+        file_name="bizcopilot_report.txt",
+        mime="text/plain",
+        key="dl_report_txt",
+        use_container_width=True,
+    )
+
+elif nav == "AI Assistant":
+    injected = st.session_state.pop("pending_question", None)
+    st.markdown(
+        '<div class="ai-page-wrap">'
+        '<div class="ai-section-head"><div class="ai-orb"></div>'
+        '<div><div class="ai-section-title">AI Assistant</div></div></div>'
+        '<div class="ai-section-meta">'
+        + html_module.escape(GROQ_MODEL)
+        + " · Answers grounded in your CSV via code execution</div>"
+        '<p style="color:#78716c;font-size:0.88rem;margin:0.75rem 0 0 52px;line-height:1.55;">'
+        "Charts for chart-style questions render below assistant replies.</p>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    sug_cols = st.columns(4)
+    suggestions = [
+        "Top 5 revenue days",
+        "Worst profit days",
+        "Total profit this period",
+        "Revenue vs cost chart",
+    ]
+    for i, s in enumerate(suggestions):
+        with sug_cols[i]:
+            if st.button(s, key="sug_" + str(i), use_container_width=True):
+                st.session_state.pending_question = s
+                st.rerun()
+
+    if not st.session_state.messages:
+        st.markdown(
+            """
 <div class="empty-copilot">
   <div class="empty-copilot-icon">&#10022;</div>
-  <h3>Start with a question</h3>
-  <p>Try one of these, or type your own in the box below.</p>
+  <h3>Ask a question</h3>
+  <p>Use a suggestion above or type below. Switch sections anytime from the sidebar.</p>
   <div class="pill-grid">
     <span class="pill-hint">Total revenue this period</span>
     <span class="pill-hint">5 lowest sales days in February</span>
     <span class="pill-hint">Revenue vs expenses chart</span>
     <span class="pill-hint">How is my business doing?</span>
-    <span class="pill-hint">Pie chart of totals</span>
   </div>
 </div>
 """,
-        unsafe_allow_html=True,
-    )
-
-for msg in st.session_state.messages:
-    if msg["role"] == "user":
-        st.markdown(
-            '<div class="msg-user"><div class="bubble">'
-            + html_module.escape(msg["content"]).replace("\n", "<br>")
-            + "</div></div>",
             unsafe_allow_html=True,
         )
-    else:
-        raw = msg["content"]
-        safe = html_module.escape(raw)
-        if "  " in raw and "\n" in raw:
-            formatted = (
-                '<pre style="font-family:DM Mono,monospace;font-size:0.8rem;white-space:pre;overflow-x:auto;'
-                'background:rgba(13,148,136,0.06);border-radius:10px;padding:0.75rem;margin:0;border:1px solid rgba(28,25,23,0.1);">'
-                + safe
-                + "</pre>"
+
+    for msg in st.session_state.messages:
+        if msg["role"] == "user":
+            st.markdown(
+                '<div class="msg-user"><div class="bubble">'
+                + html_module.escape(msg["content"]).replace("\n", "<br>")
+                + "</div></div>",
+                unsafe_allow_html=True,
             )
         else:
-            formatted = safe.replace("\n", "<br>")
-        st.markdown(
-            '<div class="msg-bot"><div class="bot-avatar">AI</div>'
-            '<div class="bubble">'
-            + formatted
-            + "</div></div>",
-            unsafe_allow_html=True,
-        )
-        ck = msg.get("chart_kind")
-        try:
-            if ck == "pie" and msg.get("pie_source"):
-                pddf = pd.DataFrame(msg["pie_source"])
-                pie_chart = (
-                    alt.Chart(pddf)
-                    .mark_arc(innerRadius=48, stroke="#e7e5e4", strokeWidth=1)
-                    .encode(
-                        theta=alt.Theta("value:Q"),
-                        color=alt.Color(
-                            "category:N",
-                            scale=alt.Scale(range=["#0d9488", "#d97706", "#e11d48"]),
-                            legend=alt.Legend(title=None),
-                        ),
-                        tooltip=["category:N", alt.Tooltip("value:Q", format=",.0f")],
-                    )
-                    .properties(height=280)
+            raw = msg["content"]
+            safe = html_module.escape(raw)
+            if "  " in raw and "\n" in raw:
+                formatted = (
+                    '<pre style="font-family:DM Mono,monospace;font-size:0.8rem;white-space:pre;overflow-x:auto;'
+                    'background:rgba(13,148,136,0.06);border-radius:10px;padding:0.75rem;margin:0;border:1px solid rgba(28,25,23,0.1);">'
+                    + safe
+                    + "</pre>"
                 )
-                st.altair_chart(pie_chart, use_container_width=True)
-            elif ck == "scatter" and msg.get("chart") is not None:
-                cdf = msg["chart"].copy()
-                ym = msg.get("chart_metric", "revenue")
-                if ym in cdf.columns:
-                    st.scatter_chart(cdf[["date", ym]], x="date", y=ym, height=280)
-            elif msg.get("chart") is not None:
-                chart_data = msg["chart"].set_index("date")
-                allowed = [c for c in ["revenue", "cost", "profit"] if c in chart_data.columns]
-                if msg.get("show_multi"):
-                    cols_to_show = allowed
-                elif msg.get("chart_metric") and msg["chart_metric"] in chart_data.columns:
-                    cols_to_show = [msg["chart_metric"]]
-                else:
-                    cols_to_show = allowed
-                if msg.get("chart_type") == "bar":
-                    st.bar_chart(chart_data[cols_to_show], height=240)
-                else:
-                    st.line_chart(chart_data[cols_to_show], height=240)
-        except Exception:
-            pass
+            else:
+                formatted = safe.replace("\n", "<br>")
+            st.markdown(
+                '<div class="msg-bot"><div class="bot-avatar">AI</div>'
+                '<div class="bubble">'
+                + formatted
+                + "</div></div>",
+                unsafe_allow_html=True,
+            )
+            ck = msg.get("chart_kind")
+            try:
+                if ck == "pie" and msg.get("pie_source"):
+                    pddf = pd.DataFrame(msg["pie_source"])
+                    pie_chart = (
+                        alt.Chart(pddf)
+                        .mark_arc(innerRadius=48, stroke="#e7e5e4", strokeWidth=1)
+                        .encode(
+                            theta=alt.Theta("value:Q"),
+                            color=alt.Color(
+                                "category:N",
+                                scale=alt.Scale(range=["#0d9488", "#d97706", "#e11d48"]),
+                                legend=alt.Legend(title=None),
+                            ),
+                            tooltip=["category:N", alt.Tooltip("value:Q", format=",.0f")],
+                        )
+                        .properties(height=280)
+                    )
+                    st.altair_chart(pie_chart, use_container_width=True)
+                elif ck == "scatter" and msg.get("chart") is not None:
+                    cdf = msg["chart"].copy()
+                    ym = msg.get("chart_metric", "revenue")
+                    if ym in cdf.columns:
+                        st.scatter_chart(cdf[["date", ym]], x="date", y=ym, height=280)
+                elif msg.get("chart") is not None:
+                    chart_data = msg["chart"].set_index("date")
+                    allowed = [c for c in ["revenue", "cost", "profit"] if c in chart_data.columns]
+                    if msg.get("show_multi"):
+                        cols_to_show = allowed
+                    elif msg.get("chart_metric") and msg["chart_metric"] in chart_data.columns:
+                        cols_to_show = [msg["chart_metric"]]
+                    else:
+                        cols_to_show = allowed
+                    if msg.get("chart_type") == "bar":
+                        st.bar_chart(chart_data[cols_to_show], height=240)
+                    else:
+                        st.line_chart(chart_data[cols_to_show], height=240)
+            except Exception:
+                pass
 
-st.markdown('<div class="chat-input-sticky">', unsafe_allow_html=True)
-user_input = st.chat_input("Ask anything about your business data...")
-st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown('<div class="chat-input-sticky">', unsafe_allow_html=True)
+    user_input = st.chat_input("Ask anything about your business data...")
+    st.markdown("</div>", unsafe_allow_html=True)
 
-if user_input:
-    text = user_input.lower()
-    full_df = df.copy()
-    data = df.copy()
-    response = ""
-    chart_df_out = None
-    chart_metric_out = "revenue"
-    chart_type_out = "line"
-    show_multi = False
-    chart_kind_out: str | None = None
-    pie_source_out: list[dict[str, Any]] | None = None
+    effective_input = injected or user_input
+    if effective_input:
+        text = effective_input.lower()
+        full_df = df.copy()
+        data = df.copy()
+        response = ""
+        chart_df_out = None
+        chart_metric_out = "revenue"
+        chart_type_out = "line"
+        show_multi = False
+        chart_kind_out: str | None = None
+        pie_source_out: list[dict[str, Any]] | None = None
 
-    specific_date = extract_specific_date(text)
-    is_asking_total_month = (has_word(text, "total") or has_word(text, "sum")) and any(
-        m in text for m in MONTH_MAP
-    )
-    if specific_date is not None and not is_asking_total_month:
-        row = full_df[full_df["date"].dt.date == specific_date.date()]
-        if row.empty:
+        specific_date = extract_specific_date(text)
+        is_asking_total_month = (has_word(text, "total") or has_word(text, "sum")) and any(
+            m in text for m in MONTH_MAP
+        )
+        if specific_date is not None and not is_asking_total_month:
+            row = full_df[full_df["date"].dt.date == specific_date.date()]
+            if row.empty:
+                response = (
+                    "No data for "
+                    + str(specific_date.date())
+                    + ". Data covers "
+                    + str(full_df["date"].min().date())
+                    + " to "
+                    + str(full_df["date"].max().date())
+                    + "."
+                )
+            else:
+                r = row.iloc[0]
+                response = (
+                    "On "
+                    + str(r["date"].date())
+                    + ":\n- Revenue: $"
+                    + f"{r['revenue']:,.2f}"
+                    + "\n- Cost:    $"
+                    + f"{r['cost']:,.2f}"
+                    + "\n- Profit:  $"
+                    + f"{r['profit']:,.2f}"
+                )
+            st.session_state.messages.append({"role": "user", "content": effective_input})
+            st.session_state.messages.append({"role": "assistant", "content": response})
+            st.rerun()
+
+        data, matched_year = filter_by_year(data, text)
+        if data is None:
             response = (
                 "No data for "
-                + str(specific_date.date())
+                + str(matched_year)
                 + ". Data covers "
                 + str(full_df["date"].min().date())
                 + " to "
                 + str(full_df["date"].max().date())
                 + "."
             )
-        else:
-            r = row.iloc[0]
-            response = (
-                "On "
-                + str(r["date"].date())
-                + ":\n- Revenue: $"
-                + f"{r['revenue']:,.2f}"
-                + "\n- Cost:    $"
-                + f"{r['cost']:,.2f}"
-                + "\n- Profit:  $"
-                + f"{r['profit']:,.2f}"
-            )
-        st.session_state.messages.append({"role": "user", "content": user_input})
-        st.session_state.messages.append({"role": "assistant", "content": response})
-        st.rerun()
-
-    data, matched_year = filter_by_year(data, text)
-    if data is None:
-        response = (
-            "No data for "
-            + str(matched_year)
-            + ". Data covers "
-            + str(full_df["date"].min().date())
-            + " to "
-            + str(full_df["date"].max().date())
-            + "."
-        )
-        st.session_state.messages.append({"role": "user", "content": user_input})
-        st.session_state.messages.append({"role": "assistant", "content": response})
-        st.rerun()
-
-    data, date_filter_note = extract_date_filter(data, text)
-
-    months_found = get_months_from_text(text)
-    matched_month = None
-    if not date_filter_note and months_found:
-        ml, mn = months_found[0]
-        month_data = data[data["date"].dt.month == mn]
-        if month_data.empty:
-            avail = sorted(full_df["date"].dt.strftime("%B %Y").unique())
-            response = "No data for " + ml + " in the current filter. Available: " + ", ".join(avail) + "."
-            st.session_state.messages.append({"role": "user", "content": user_input})
+            st.session_state.messages.append({"role": "user", "content": effective_input})
             st.session_state.messages.append({"role": "assistant", "content": response})
             st.rerun()
-        data = month_data
-        matched_month = ml
 
-    if has_word(text, "profit") or has_word(text, "loss") or has_word(text, "gain"):
-        metric = "profit"
-    elif has_word(text, "cost") or has_word(text, "expense") or has_word(text, "costs") or has_word(text, "expenses"):
-        metric = "cost"
-    elif has_word(text, "margin"):
-        metric = "margin_pct"
-    else:
-        metric = "revenue"
+        data, date_filter_note = extract_date_filter(data, text)
 
-    chart_metric_out = metric if metric in ["revenue", "cost", "profit"] else "revenue"
-    if "bar" in text:
-        chart_type_out = "bar"
+        months_found = get_months_from_text(text)
+        matched_month = None
+        if not date_filter_note and months_found:
+            ml, mn = months_found[0]
+            month_data = data[data["date"].dt.month == mn]
+            if month_data.empty:
+                avail = sorted(full_df["date"].dt.strftime("%B %Y").unique())
+                response = "No data for " + ml + " in the current filter. Available: " + ", ".join(avail) + "."
+                st.session_state.messages.append({"role": "user", "content": effective_input})
+                st.session_state.messages.append({"role": "assistant", "content": response})
+                st.rerun()
+            data = month_data
+            matched_month = ml
 
-    is_chart = any(
-        k in text
-        for k in [
-            "chart",
-            "graph",
-            "trend",
-            "plot",
-            "visualize",
-            "draw",
-            "display",
-            "scatter",
-            "pie",
-            "histogram",
-        ]
-    ) or bool(re.search(r"\bmap\b", text))
+        if has_word(text, "profit") or has_word(text, "loss") or has_word(text, "gain"):
+            metric = "profit"
+        elif has_word(text, "cost") or has_word(text, "expense") or has_word(text, "costs") or has_word(text, "expenses"):
+            metric = "cost"
+        elif has_word(text, "margin"):
+            metric = "margin_pct"
+        else:
+            metric = "revenue"
 
-    if is_chart:
-        if re.search(r"\bmap\b", text) and "heatmap" not in text:
-            response = (
-                "Geographic maps need location data (region, store, latitude/longitude). "
-                "Your spreadsheet is daily financial totals only, so a map is not available. "
-                "Try a line or bar chart for trends, or a pie chart for revenue vs cost vs profit share."
+        chart_metric_out = metric if metric in ["revenue", "cost", "profit"] else "revenue"
+        if "bar" in text:
+            chart_type_out = "bar"
+
+        is_chart = any(
+            k in text
+            for k in [
+                "chart",
+                "graph",
+                "trend",
+                "plot",
+                "visualize",
+                "draw",
+                "display",
+                "scatter",
+                "pie",
+                "histogram",
+            ]
+        ) or bool(re.search(r"\bmap\b", text))
+
+        if is_chart:
+            if re.search(r"\bmap\b", text) and "heatmap" not in text:
+                response = (
+                    "Geographic maps need location data (region, store, latitude/longitude). "
+                    "Your spreadsheet is daily financial totals only, so a map is not available. "
+                    "Try a line or bar chart for trends, or a pie chart for revenue vs cost vs profit share."
+                )
+                st.session_state.messages.append({"role": "user", "content": effective_input})
+                st.session_state.messages.append(
+                    {
+                        "role": "assistant",
+                        "content": response,
+                        "chart": None,
+                        "chart_metric": chart_metric_out,
+                        "chart_type": chart_type_out,
+                        "show_multi": show_multi,
+                        "chart_kind": None,
+                        "pie_source": None,
+                    }
+                )
+                st.rerun()
+
+            if "pie" in text:
+                need = ["revenue", "cost", "profit"]
+                if not all(c in data.columns for c in need):
+                    response = "Pie chart needs revenue, cost, and profit columns in the data."
+                else:
+                    pie_source_out = [
+                        {"category": "Revenue", "value": float(data["revenue"].sum())},
+                        {"category": "Cost", "value": float(data["cost"].sum())},
+                        {"category": "Profit", "value": float(data["profit"].sum())},
+                    ]
+                    chart_kind_out = "pie"
+                    period_bits = []
+                    if matched_month:
+                        period_bits.append(matched_month)
+                    if matched_year:
+                        period_bits.append(str(matched_year))
+                    period = " · ".join(period_bits) if period_bits else "full range"
+                    response = "Pie chart: share of revenue, cost, and profit (" + period + ")."
+                st.session_state.messages.append({"role": "user", "content": effective_input})
+                st.session_state.messages.append(
+                    {
+                        "role": "assistant",
+                        "content": response,
+                        "chart": chart_df_out,
+                        "chart_metric": chart_metric_out,
+                        "chart_type": chart_type_out,
+                        "show_multi": show_multi,
+                        "chart_kind": chart_kind_out,
+                        "pie_source": pie_source_out,
+                    }
+                )
+                st.rerun()
+
+            if "scatter" in text:
+                m = metric if metric in ["revenue", "cost", "profit"] else "revenue"
+                if m not in data.columns:
+                    response = "Cannot build a scatter plot: missing " + m + " column."
+                else:
+                    chart_df_out = data[["date", m]].copy()
+                    chart_metric_out = m
+                    chart_kind_out = "scatter"
+                    response = "Scatter plot: " + m + " by day (each point is one day)."
+                st.session_state.messages.append({"role": "user", "content": effective_input})
+                st.session_state.messages.append(
+                    {
+                        "role": "assistant",
+                        "content": response,
+                        "chart": chart_df_out,
+                        "chart_metric": chart_metric_out,
+                        "chart_type": chart_type_out,
+                        "show_multi": show_multi,
+                        "chart_kind": chart_kind_out,
+                        "pie_source": pie_source_out,
+                    }
+                )
+                st.rerun()
+
+            show_both = any(
+                p in text
+                for p in ["and expense", "and cost", "versus", "vs", "and revenue", "and sales", "and profit"]
             )
-            st.session_state.messages.append({"role": "user", "content": user_input})
-            st.session_state.messages.append(
-                {
-                    "role": "assistant",
-                    "content": response,
-                    "chart": None,
-                    "chart_metric": chart_metric_out,
-                    "chart_type": chart_type_out,
-                    "show_multi": show_multi,
-                    "chart_kind": None,
-                    "pie_source": None,
-                }
-            )
-            st.rerun()
-
-        if "pie" in text:
-            need = ["revenue", "cost", "profit"]
-            if not all(c in data.columns for c in need):
-                response = "Pie chart needs revenue, cost, and profit columns in the data."
-            else:
-                pie_source_out = [
-                    {"category": "Revenue", "value": float(data["revenue"].sum())},
-                    {"category": "Cost", "value": float(data["cost"].sum())},
-                    {"category": "Profit", "value": float(data["profit"].sum())},
-                ]
-                chart_kind_out = "pie"
+            if show_both:
+                cols = []
+                if has_word(text, "sales") or has_word(text, "revenue"):
+                    cols.append("revenue")
+                if has_word(text, "expense") or has_word(text, "cost") or has_word(text, "expenses"):
+                    cols.append("cost")
+                if has_word(text, "profit"):
+                    cols.append("profit")
+                cols = cols if cols else ["revenue", "cost"]
                 period_bits = []
                 if matched_month:
                     period_bits.append(matched_month)
                 if matched_year:
-                    period_bits.append(str(matched_year))
-                period = " · ".join(period_bits) if period_bits else "full range"
-                response = "Pie chart: share of revenue, cost, and profit (" + period + ")."
-            st.session_state.messages.append({"role": "user", "content": user_input})
-            st.session_state.messages.append(
-                {
-                    "role": "assistant",
-                    "content": response,
-                    "chart": chart_df_out,
-                    "chart_metric": chart_metric_out,
-                    "chart_type": chart_type_out,
-                    "show_multi": show_multi,
-                    "chart_kind": chart_kind_out,
-                    "pie_source": pie_source_out,
-                }
-            )
-            st.rerun()
-
-        if "scatter" in text:
-            m = metric if metric in ["revenue", "cost", "profit"] else "revenue"
-            if m not in data.columns:
-                response = "Cannot build a scatter plot: missing " + m + " column."
+                    period_bits.append(matched_year)
+                if date_filter_note:
+                    period_bits.append(date_filter_note)
+                period = " ".join(period_bits) if period_bits else "selected period"
+                response = "Chart: " + " & ".join(cols) + " (" + period + ")"
+                chart_df_out = data[["date"] + [c for c in cols if c in data.columns]]
+                chart_metric_out = cols[0]
+                show_multi = True
+                chart_kind_out = "bar" if chart_type_out == "bar" else "line"
             else:
-                chart_df_out = data[["date", m]].copy()
+                m = metric if metric in ["revenue", "cost", "profit"] else "revenue"
+                response = m.capitalize() + " trend"
+                chart_df_out = data[["date", m]] if m in data.columns else None
                 chart_metric_out = m
-                chart_kind_out = "scatter"
-                response = "Scatter plot: " + m + " by day (each point is one day)."
-            st.session_state.messages.append({"role": "user", "content": user_input})
+                chart_kind_out = "bar" if chart_type_out == "bar" else "line"
+            st.session_state.messages.append({"role": "user", "content": effective_input})
             st.session_state.messages.append(
                 {
                     "role": "assistant",
@@ -1537,39 +1932,20 @@ if user_input:
             )
             st.rerun()
 
-        show_both = any(
-            p in text
-            for p in ["and expense", "and cost", "versus", "vs", "and revenue", "and sales", "and profit"]
-        )
-        if show_both:
-            cols = []
-            if has_word(text, "sales") or has_word(text, "revenue"):
-                cols.append("revenue")
-            if has_word(text, "expense") or has_word(text, "cost") or has_word(text, "expenses"):
-                cols.append("cost")
-            if has_word(text, "profit"):
-                cols.append("profit")
-            cols = cols if cols else ["revenue", "cost"]
-            period_bits = []
-            if matched_month:
-                period_bits.append(matched_month)
-            if matched_year:
-                period_bits.append(matched_year)
-            if date_filter_note:
-                period_bits.append(date_filter_note)
-            period = " ".join(period_bits) if period_bits else "selected period"
-            response = "Chart: " + " & ".join(cols) + " (" + period + ")"
-            chart_df_out = data[["date"] + [c for c in cols if c in data.columns]]
-            chart_metric_out = cols[0]
-            show_multi = True
-            chart_kind_out = "bar" if chart_type_out == "bar" else "line"
-        else:
-            m = metric if metric in ["revenue", "cost", "profit"] else "revenue"
-            response = m.capitalize() + " trend"
-            chart_df_out = data[["date", m]] if m in data.columns else None
-            chart_metric_out = m
-            chart_kind_out = "bar" if chart_type_out == "bar" else "line"
-        st.session_state.messages.append({"role": "user", "content": user_input})
+        try:
+            with st.spinner("Analyzing your data…"):
+                answer, _dbg = run_grounded_analyst(
+                    client,
+                    full_df,
+                    business,
+                    effective_input,
+                    model=GROQ_MODEL,
+                )
+            response = answer
+        except Exception as e:
+            response = _groq_auth_error_message(e) or ("Something went wrong: " + str(e))
+
+        st.session_state.messages.append({"role": "user", "content": effective_input})
         st.session_state.messages.append(
             {
                 "role": "assistant",
@@ -1583,30 +1959,3 @@ if user_input:
             }
         )
         st.rerun()
-
-    try:
-        answer, _dbg = run_grounded_analyst(
-            client,
-            full_df,
-            business,
-            user_input,
-            model=GROQ_MODEL,
-        )
-        response = answer
-    except Exception as e:
-        response = _groq_auth_error_message(e) or ("Something went wrong: " + str(e))
-
-    st.session_state.messages.append({"role": "user", "content": user_input})
-    st.session_state.messages.append(
-        {
-            "role": "assistant",
-            "content": response,
-            "chart": chart_df_out,
-            "chart_metric": chart_metric_out,
-            "chart_type": chart_type_out,
-            "show_multi": show_multi,
-            "chart_kind": chart_kind_out,
-            "pie_source": pie_source_out,
-        }
-    )
-    st.rerun()
