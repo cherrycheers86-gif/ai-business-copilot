@@ -786,6 +786,25 @@ Rules:
 12) Tool JSON: only use listed operation and metric enum values; optional fields may be omitted or null."""
 
 
+def _groq_auth_error_message(exc: Exception) -> str | None:
+    """Human-readable hint when Groq returns 401 / invalid key."""
+    raw = str(exc)
+    low = raw.lower()
+    if (
+        "401" in raw
+        or "invalid api key" in low
+        or "invalid_api_key" in low
+        or "authenticationerror" in low.replace(" ", "")
+    ):
+        return (
+            "Groq rejected this API key (401 invalid_api_key). Fix `.streamlit/secrets.toml`: "
+            "copy a new key from https://console.groq.com/keys and set `GROQ_API_KEY = \"gsk_...\"` "
+            "(no spaces before/after the value, no extra quotes inside the string). "
+            "Restart the app after saving."
+        )
+    return None
+
+
 def run_grounded_analyst(
     client: Groq,
     df: pd.DataFrame,
@@ -816,6 +835,9 @@ def run_grounded_analyst(
         try:
             resp = _chat()
         except Exception as e:
+            auth = _groq_auth_error_message(e)
+            if auth:
+                return auth, messages
             err = str(e).lower()
             if "tool" in err and ("validation" in err or "tool_use" in err or "400" in str(e)):
                 messages.append(
@@ -832,6 +854,9 @@ def run_grounded_analyst(
                 try:
                     resp = _chat()
                 except Exception as e2:
+                    auth2 = _groq_auth_error_message(e2)
+                    if auth2:
+                        return auth2, messages
                     return "Something went wrong: " + str(e2), messages
             else:
                 return "Something went wrong: " + str(e), messages
@@ -894,7 +919,12 @@ if "GROQ_API_KEY" not in st.secrets:
     st.error("Add GROQ_API_KEY to .streamlit/secrets.toml")
     st.stop()
 
-client = Groq(api_key=st.secrets["GROQ_API_KEY"])
+_groq_key = str(st.secrets["GROQ_API_KEY"]).strip()
+if not _groq_key:
+    st.error("GROQ_API_KEY is empty in .streamlit/secrets.toml after trimming spaces.")
+    st.stop()
+
+client = Groq(api_key=_groq_key)
 GROQ_MODEL = str(st.secrets.get("GROQ_MODEL", "llama-3.3-70b-versatile"))
 
 st.markdown(STYLES, unsafe_allow_html=True)
@@ -1572,7 +1602,7 @@ if user_input:
         )
         response = answer
     except Exception as e:
-        response = "Something went wrong: " + str(e)
+        response = _groq_auth_error_message(e) or ("Something went wrong: " + str(e))
 
     st.session_state.messages.append({"role": "user", "content": user_input})
     st.session_state.messages.append(
