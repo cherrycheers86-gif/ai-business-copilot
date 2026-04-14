@@ -1,11 +1,15 @@
-# BizCopilot — single-file Streamlit app (tool-grounded Groq analyst).
+# BizCopilot — Streamlit app: Groq analyst runs AI-written pandas via restricted exec (see run_dataframe_code).
 # Run: streamlit run bizcopilot_app_single_file.py
 # Secrets: .streamlit/secrets.toml → GROQ_API_KEY = "..."  (optional GROQ_MODEL)
-# Deps: pip install streamlit pandas groq altair
+# Deps: pip install streamlit pandas groq altair numpy
 
 from __future__ import annotations
 
+import ast
+import builtins
+import contextlib
 import html as html_module
+import io
 import json
 import re
 from typing import Any
@@ -14,23 +18,6 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 from groq import Groq
-
-
-def _safe_int(val: Any, default: int) -> int:
-    if val is None:
-        return default
-    if isinstance(val, bool):
-        return default
-    if isinstance(val, int):
-        return val
-    if isinstance(val, float):
-        return int(val)
-    if isinstance(val, str) and val.strip():
-        try:
-            return int(float(val.strip()))
-        except ValueError:
-            return default
-    return default
 
 
 # =============================================================================
@@ -366,6 +353,72 @@ div[data-testid="stAlert"] {
 
 p, span, div, label { color: inherit; }
 [data-testid="stMarkdownContainer"] p { color: var(--ink-mid); }
+
+.sidebar-upload-shell {
+  background: linear-gradient(160deg, rgba(255,255,255,0.97) 0%, rgba(255,255,255,0.88) 100%);
+  border: 1px solid rgba(13,148,136,0.2);
+  border-radius: var(--radius);
+  padding: 1.05rem 1.15rem 1.2rem 1.15rem;
+  box-shadow: 0 8px 32px rgba(13,148,136,0.08);
+  margin-bottom: 0.35rem;
+}
+.sidebar-upload-shell .sut-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--ink);
+  margin: 0 0 0.35rem 0;
+  letter-spacing: -0.02em;
+}
+.sidebar-upload-shell .sut-hint {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  line-height: 1.55;
+  margin: 0 0 0.85rem 0;
+}
+.empty-connect-hero {
+  max-width: 560px;
+  margin: 0 auto;
+  text-align: center;
+  padding: 2.5rem 1.5rem 2rem 1.5rem;
+  background: linear-gradient(180deg, rgba(255,255,255,0.75) 0%, rgba(251,250,247,0.5) 100%);
+  border: 1px solid var(--line2);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+}
+.empty-connect-hero .ech-icon {
+  width: 72px; height: 72px; margin: 0 auto 1.25rem auto;
+  border-radius: 20px;
+  background: linear-gradient(145deg, rgba(13,148,136,0.18), rgba(217,119,6,0.12));
+  border: 1px solid rgba(13,148,136,0.25);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.75rem;
+}
+.empty-connect-hero .ech-title {
+  font-family: var(--font-display);
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+  margin: 0 0 0.5rem 0;
+}
+.empty-connect-hero .ech-body {
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+  line-height: 1.65;
+  margin: 0 0 1.25rem 0;
+}
+.empty-connect-hero .ech-kbd {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 8px;
+  background: rgba(13,148,136,0.1);
+  border: 1px solid rgba(13,148,136,0.22);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--teal-dim);
+  font-weight: 600;
+}
 </style>
 """
 
@@ -465,287 +518,181 @@ def build_fact_sheet(df: pd.DataFrame) -> dict[str, Any]:
 
 
 # =============================================================================
-# Analytics tool (deterministic numbers for the LLM)
+# AI-authored pandas (restricted exec) — flexible answers without fixed op enums
 # =============================================================================
-def _slice_df(
-    df: pd.DataFrame,
-    year: int | None = None,
-    month: int | None = None,
-    date_after: str | None = None,
-    date_before: str | None = None,
-) -> pd.DataFrame:
+_MAX_CODE_CHARS = 12_000
+
+_FORBIDDEN_CALL_NAMES = frozenset({"eval", "exec", "compile", "__import__", "open", "globals", "locals", "input"})
+
+
+def _dataframe_schema_line(df: pd.DataFrame) -> str:
     d = ensure_derived_columns(df)
-    d = d.dropna(subset=["date"])
-    if year is not None:
-        d = d[d["date"].dt.year == year]
-    if month is not None:
-        d = d[d["date"].dt.month == month]
-    if date_after:
-        dt = pd.to_datetime(date_after)
-        d = d[d["date"] > dt]
-    if date_before:
-        dt = pd.to_datetime(date_before)
-        d = d[d["date"] < dt]
-    return d
+    return "; ".join(f"{c} ({d[c].dtype})" for c in d.columns)
 
 
-def _metric_series(df: pd.DataFrame, metric: str) -> pd.Series:
-    if metric not in df.columns:
-        raise KeyError(metric)
-    return df[metric]
+def _validate_copilot_code(src: str) -> tuple[bool, str]:
+    if "__" in src:
+        return False, "code_must_not_contain__"
+    try:
+        tree = ast.parse(src)
+    except SyntaxError as e:
+        return False, f"syntax_error: {e}"
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            return False, "import_not_allowed"
+        if isinstance(node, ast.Call):
+            fn = node.func
+            if isinstance(fn, ast.Name) and fn.id in _FORBIDDEN_CALL_NAMES:
+                return False, f"forbidden_call:{fn.id}"
+            if isinstance(fn, ast.Attribute) and fn.attr in ("open", "system", "popen", "unlink", "remove", "rmtree"):
+                return False, f"forbidden_call:{fn.attr}"
+    return True, ""
 
 
-def analytics_tool_run(df: pd.DataFrame, arguments: dict[str, Any]) -> str:
-    op = arguments.get("operation")
-    metric = arguments.get("metric") or "revenue"
-    if metric not in ("revenue", "cost", "profit", "margin_pct"):
-        metric = "revenue"
-    raw_year = arguments.get("year")
-    raw_month = arguments.get("month")
-    year = _safe_int(raw_year, 0) if raw_year not in (None, "", False) else None
-    if year is not None and year < 1900:
-        year = None
-    month = _safe_int(raw_month, 0) if raw_month not in (None, "", False) else None
-    if month is not None and not (1 <= month <= 12):
-        month = None
-    date_after = arguments.get("date_after")
-    date_before = arguments.get("date_before")
-    top_n = max(1, min(_safe_int(arguments.get("top_n"), 5), 60))
-    month_a = arguments.get("month_a")
-    month_b = arguments.get("month_b")
+def _sanitize_tool_result(obj: Any) -> Any:
+    if obj is None or isinstance(obj, (bool, str)):
+        return obj
+    if isinstance(obj, (int, float)) and not isinstance(obj, bool):
+        return obj
+    if isinstance(obj, pd.DataFrame):
+        return {
+            "_type": "dataframe",
+            "records": obj.replace({pd.NA: None}).to_dict(orient="records"),
+        }
+    if isinstance(obj, pd.Series):
+        return {"_type": "series", "pairs": list(zip(obj.index.astype(str).tolist(), obj.tolist()))}
+    if isinstance(obj, pd.Timestamp):
+        return str(obj)
+    try:
+        import numpy as np
 
-    def _month_num(val: Any) -> int | None:
-        if val in (None, "", False):
-            return None
-        n = _safe_int(val, -1)
-        if 1 <= n <= 12:
-            return n
-        return None
+        if isinstance(obj, (np.integer, np.floating, np.bool_)):
+            return obj.item()
+    except ImportError:
+        pass
+    if isinstance(obj, dict):
+        return {str(k): _sanitize_tool_result(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_sanitize_tool_result(x) for x in obj]
+    if hasattr(obj, "item"):
+        try:
+            return obj.item()
+        except Exception:
+            pass
+    return str(obj)
 
-    month_a_i = _month_num(month_a)
-    month_b_i = _month_num(month_b)
+
+def run_dataframe_code(df: pd.DataFrame, code: str) -> str:
+    """Execute model-written pandas in a tight namespace; answer must be assigned to RESULT."""
+    stripped = (code or "").strip()
+    if not stripped:
+        return json.dumps({"ok": False, "error": "empty_code"})
+    if len(stripped) > _MAX_CODE_CHARS:
+        return json.dumps({"ok": False, "error": "code_too_long", "max": _MAX_CODE_CHARS})
+    ok, reason = _validate_copilot_code(stripped)
+    if not ok:
+        return json.dumps({"ok": False, "error": reason})
+
+    out_buf = io.StringIO()
+    err_buf = io.StringIO()
+
+    def _safe_print(*args: Any, **kwargs: Any) -> None:
+        kwargs = {**kwargs, "file": out_buf}
+        builtins.print(*args, **kwargs)
+
+    safe_builtins: dict[str, Any] = {
+        "len": len,
+        "min": min,
+        "max": max,
+        "sum": sum,
+        "abs": abs,
+        "round": round,
+        "float": float,
+        "int": int,
+        "str": str,
+        "bool": bool,
+        "list": list,
+        "tuple": tuple,
+        "dict": dict,
+        "set": set,
+        "sorted": sorted,
+        "enumerate": enumerate,
+        "zip": zip,
+        "range": range,
+        "print": _safe_print,
+    }
+
+    ns: dict[str, Any] = {
+        "__builtins__": safe_builtins,
+        "pd": pd,
+        "df": ensure_derived_columns(df.copy()),
+        "RESULT": None,
+    }
+    try:
+        import numpy as np
+
+        ns["np"] = np
+    except ImportError:
+        pass
 
     try:
-        subset = _slice_df(df, year=year, month=month, date_after=date_after, date_before=date_before)
-        if subset.empty:
-            return json.dumps(
-                {
-                    "ok": False,
-                    "reason": "no_rows_for_filter",
-                    "filters": {
-                        "year": year,
-                        "month": month,
-                        "date_after": date_after,
-                        "date_before": date_before,
-                    },
-                }
-            )
-
-        if op == "describe_window":
-            return json.dumps(
-                {
-                    "ok": True,
-                    "operation": op,
-                    "filters": {"year": year, "month": month, "date_after": date_after, "date_before": date_before},
-                    "row_count": int(len(subset)),
-                    "date_range": {"min": str(subset["date"].min().date()), "max": str(subset["date"].max().date())},
-                }
-            )
-
-        if op == "total":
-            s = _metric_series(subset, metric)
-            return json.dumps({"ok": True, "operation": op, "metric": metric, "value": float(s.sum())})
-
-        if op == "average":
-            s = _metric_series(subset, metric)
-            return json.dumps({"ok": True, "operation": op, "metric": metric, "value": float(s.mean())})
-
-        if op == "median":
-            s = _metric_series(subset, metric)
-            return json.dumps({"ok": True, "operation": op, "metric": metric, "value": float(s.median())})
-
-        if op == "correlation_revenue_cost":
-            if "revenue" not in subset.columns or "cost" not in subset.columns:
-                return json.dumps({"ok": False, "reason": "revenue_or_cost_missing"})
-            c = subset["revenue"].corr(subset["cost"])
-            pearson = float(c) if pd.notna(c) else None
-            return json.dumps(
-                {
-                    "ok": True,
-                    "operation": op,
-                    "pearson_r": pearson,
-                    "row_count": int(len(subset)),
-                    "note": "High positive r means revenue and cost move together; it does not prove costs are 'disproportionate' without comparing margins or growth rates.",
-                }
-            )
-
-        if op == "max":
-            s = _metric_series(subset, metric)
-            row = subset.loc[s.idxmax()]
-            return json.dumps(
-                {
-                    "ok": True,
-                    "operation": op,
-                    "metric": metric,
-                    "value": float(row[metric]),
-                    "date": str(row["date"].date()),
-                }
-            )
-
-        if op == "min":
-            s = _metric_series(subset, metric)
-            row = subset.loc[s.idxmin()]
-            return json.dumps(
-                {
-                    "ok": True,
-                    "operation": op,
-                    "metric": metric,
-                    "value": float(row[metric]),
-                    "date": str(row["date"].date()),
-                }
-            )
-
-        if op == "top_days":
-            s = _metric_series(subset, metric)
-            top = subset.assign(_m=s).nlargest(top_n, "_m")
-            rows = []
-            for _, r in top.iterrows():
-                rows.append({"date": str(r["date"].date()), metric: float(r[metric])})
-            return json.dumps({"ok": True, "operation": op, "metric": metric, "top": rows})
-
-        if op == "bottom_days":
-            s = _metric_series(subset, metric)
-            bot = subset.assign(_m=s).nsmallest(top_n, "_m")
-            rows = []
-            for _, r in bot.iterrows():
-                rows.append({"date": str(r["date"].date()), metric: float(r[metric])})
-            return json.dumps({"ok": True, "operation": op, "metric": metric, "bottom": rows})
-
-        if op == "compare_months":
-            if month_a_i is None or month_b_i is None:
-                return json.dumps({"ok": False, "reason": "month_a_and_month_b_required"})
-            full = ensure_derived_columns(df).dropna(subset=["date"])
-            if year is not None:
-                full = full[full["date"].dt.year == int(year)]
-            out: dict[str, Any] = {
-                "ok": True,
-                "operation": op,
-                "metric": metric,
-                "year_filter": year,
-                "months": {},
-            }
-            for label, m in [("a", month_a_i), ("b", month_b_i)]:
-                md = full[full["date"].dt.month == int(m)]
-                if md.empty:
-                    out["months"][label] = {"month": int(m), "empty": True}
-                    continue
-                s = _metric_series(md, metric)
-                out["months"][label] = {
-                    "month": int(m),
-                    "empty": False,
-                    "total": float(s.sum()),
-                    "average": float(s.mean()),
-                    "max": float(s.max()),
-                    "min": float(s.min()),
-                }
-            return json.dumps(out)
-
-        if op == "rolling_average_profit":
-            window = _safe_int(arguments.get("window"), 7)
-            w = max(1, min(window, 90))
-            sub = subset.sort_values("date")
-            if "profit" not in sub.columns:
-                return json.dumps({"ok": False, "reason": "profit_column_missing"})
-            roll = sub["profit"].rolling(w).mean().dropna()
-            if roll.empty:
-                return json.dumps({"ok": False, "reason": "insufficient_data_for_window", "window": w})
-            latest = float(roll.iloc[-1])
-            return json.dumps(
-                {
-                    "ok": True,
-                    "operation": op,
-                    "window_days": w,
-                    "latest_rolling_avg_profit": latest,
-                    "simple_avg_profit_in_window": float(sub["profit"].mean()),
-                }
-            )
-
-        return json.dumps({"ok": False, "reason": "unknown_operation", "operation": op})
-    except KeyError as e:
-        return json.dumps({"ok": False, "reason": "missing_column", "detail": str(e)})
+        compiled = compile(stripped, "<bizcopilot>", "exec")
+        with contextlib.redirect_stderr(err_buf):
+            exec(compiled, ns, ns)
     except Exception as e:
-        return json.dumps({"ok": False, "reason": "error", "detail": str(e)})
+        return json.dumps(
+            {
+                "ok": False,
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "stdout": out_buf.getvalue(),
+                "stderr": err_buf.getvalue(),
+            }
+        )
+
+    raw_result = ns.get("RESULT")
+    try:
+        payload = _sanitize_tool_result(raw_result)
+        return json.dumps(
+            {
+                "ok": True,
+                "result": payload,
+                "stdout": (out_buf.getvalue().strip() or None),
+                "stderr": (err_buf.getvalue().strip() or None),
+            },
+            default=str,
+        )
+    except Exception as e:
+        return json.dumps(
+            {
+                "ok": False,
+                "error": "result_not_serializable",
+                "detail": str(e),
+                "hint": "Set RESULT to dict, list, number, str, or a DataFrame/Series.",
+            }
+        )
 
 
-# Groq validates tool JSON strictly; models often send null for unused optional fields — allow null in schema.
-_NULLABLE_INT: dict[str, Any] = {"anyOf": [{"type": "integer"}, {"type": "null"}]}
-_NULLABLE_STR: dict[str, Any] = {"anyOf": [{"type": "string"}, {"type": "null"}]}
-_NULLABLE_TOP_N: dict[str, Any] = {"anyOf": [{"type": "integer"}, {"type": "string"}, {"type": "null"}]}
-
-ANALYTICS_TOOL_DEFINITION: dict[str, Any] = {
+CODE_TOOL_DEFINITION: dict[str, Any] = {
     "type": "function",
     "function": {
-        "name": "run_business_analytics",
+        "name": "run_dataframe_code",
         "description": (
-            "Compute exact numbers from the user's uploaded daily business dataset. "
-            "Use top_days for 'highest/best/top N days' and bottom_days for 'lowest/worst/smallest N days'. "
-            "Use min for a single minimum value; use bottom_days for a ranked list. "
-            "For month filters use month 1-12 and optional year. "
-            "For Pearson correlation between revenue and cost use operation correlation_revenue_cost (metric may be revenue; it is ignored). "
-            "For median use operation median. "
-            "Full-dataset revenue-cost correlation is also in FACT_SHEET as revenue_cost_correlation. "
-            "Optional arguments may be omitted or JSON null. "
-            "Do not guess; always use this tool for numeric facts."
+            "Execute pandas code on the user's dataset. Variables: `df` (DataFrame copy, columns in system message), `pd` (pandas), "
+            "optionally `np`. No import/open/exec/eval or double-underscore names. "
+            "Assign the answer to `RESULT` (e.g. dict with figures, list of records, float, str, or a small DataFrame). "
+            "Filter months with df['date'].dt.month == 2, years with df['date'].dt.year == 2026. "
+            "For 'sales' use column revenue if present."
         ),
         "parameters": {
             "type": "object",
             "properties": {
-                "operation": {
+                "code": {
                     "type": "string",
-                    "enum": [
-                        "describe_window",
-                        "total",
-                        "average",
-                        "median",
-                        "max",
-                        "min",
-                        "top_days",
-                        "bottom_days",
-                        "compare_months",
-                        "rolling_average_profit",
-                        "correlation_revenue_cost",
-                    ],
-                    "description": "Which aggregation to perform.",
-                },
-                "metric": {
-                    "anyOf": [
-                        {
-                            "type": "string",
-                            "enum": ["revenue", "cost", "profit", "margin_pct"],
-                        },
-                        {"type": "null"},
-                    ],
-                    "description": (
-                        "Metric column (margin_pct is percentage points, not dollars). "
-                        "Omit or null only for describe_window or correlation_revenue_cost; otherwise defaults to revenue."
-                    ),
-                },
-                "year": {**_NULLABLE_INT, "description": "Optional calendar year filter (e.g. 2026)."},
-                "month": {**_NULLABLE_INT, "description": "Optional month 1-12 filter."},
-                "date_after": {**_NULLABLE_STR, "description": "Optional exclusive lower bound ISO date YYYY-MM-DD."},
-                "date_before": {**_NULLABLE_STR, "description": "Optional exclusive upper bound ISO date YYYY-MM-DD."},
-                "top_n": {
-                    **_NULLABLE_TOP_N,
-                    "description": "For top_days/bottom_days: row count (e.g. 5). Integer preferred.",
-                },
-                "month_a": {**_NULLABLE_INT, "description": "For compare_months: first month 1-12."},
-                "month_b": {**_NULLABLE_INT, "description": "For compare_months: second month 1-12."},
-                "window": {
-                    **_NULLABLE_INT,
-                    "description": "For rolling_average_profit, window length in days (default 7, max 90).",
+                    "description": "Short pandas script; must set RESULT.",
                 },
             },
-            "required": ["operation"],
+            "required": ["code"],
         },
     },
 }
@@ -762,28 +709,30 @@ def _business_blurb(business: dict[str, Any]) -> str:
     )
 
 
-def _system_prompt(fact_sheet: dict[str, Any], business: dict[str, Any]) -> str:
+def _system_prompt(fact_sheet: dict[str, Any], business: dict[str, Any], df: pd.DataFrame) -> str:
     facts_json = json.dumps(fact_sheet, indent=2, default=str)
+    schema = _dataframe_schema_line(df)
     return f"""You are an AI business analyst for a small business.
 
 {_business_blurb(business)}
 
-FACT_SHEET (precomputed; authoritative for high-level narrative and context):
+DATAFRAME_SCHEMA (columns and dtypes — use these exact names on df):
+{schema}
+
+FACT_SHEET (precomputed summary for context; for precise filtered numbers prefer running code):
 {facts_json}
 
-Rules:
-1) For ANY specific number (totals, averages, median, min/max, ranked days, comparisons, filtered periods, correlation over a chosen window), you MUST call `run_business_analytics` and answer ONLY from the latest tool JSON. Do not blend FACT_SHEET numbers with tool results if they could differ.
-2) "Losing money", "worst days", "bleeding", "biggest losses" -> default to metric profit (bottom_days or min). Do not answer with "highest cost day" unless the user asked about costs specifically.
-3) "Lowest/worst/smallest N days" -> bottom_days with the metric the user cares about (profit unless they name revenue/cost). "Highest/top N days" -> top_days. "Lowest single day" / "minimum" -> min.
-4) When the user names a month or year (e.g. "February 2026"), set year and/or month on tool calls so lists (e.g. top 3 days) do not include other months.
-5) Revenue-cost correlation: use operation correlation_revenue_cost with the same filters, OR cite FACT_SHEET revenue_cost_correlation for the full cleaned dataset. Never use a fake metric name. High positive correlation means both series move together; it does NOT by itself mean costs are "disproportionate"—compare margin_pct or profit trends if they ask that.
-6) "Risks" must be grounded in the numbers (volatility, worst days, margin compression, partial-month data). Do not label "low profit days" as risks without explaining what the data shows.
-7) Never invent causes (e.g. "what caused it")—the CSV has no event labels; speak only from values and dates.
-8) Never invent or mentally recalculate. If the tool returns multiple rows, list them exactly.
-9) margin_pct is a percentage, not dollars.
-10) Be concise; end with one recommendation when helpful.
-11) If the question is outside the dataset (e.g. weather), say you only have their upload.
-12) Tool JSON: only use listed operation and metric enum values; optional fields may be omitted or null."""
+How to answer:
+1) For any question that needs numbers, aggregates, filters, rankings, correlations, or comparisons, call `run_dataframe_code` with short pandas code. Your code runs in a sandbox with only `df`, `pd`, and optionally `np`. Set `RESULT` to your computed answer (dict/list/str/number or small DataFrame).
+2) Do not use import, open, exec, eval, or any name containing `__`.
+3) Interpret "losing money" / "worst days" using profit (or revenue minus cost) unless the user clearly asks about costs only.
+4) Respect the user's time window (month/year names) in your filters.
+5) After the tool returns JSON, explain in plain language using ONLY values from that JSON (and FACT_SHEET for high-level correlation if you did not filter). Never invent causes not in the data.
+6) margin_pct is a percentage, not dollars.
+7) If the question cannot be answered from this dataset (e.g. weather), say so briefly.
+8) Code execution is not a perfect security boundary; keep code minimal and data-only.
+
+Be concise; add one practical recommendation when it helps."""
 
 
 def _groq_auth_error_message(exc: Exception) -> str | None:
@@ -816,10 +765,10 @@ def run_grounded_analyst(
 ) -> tuple[str, list[dict[str, Any]]]:
     fact_sheet = build_fact_sheet(df)
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": _system_prompt(fact_sheet, business)},
+        {"role": "system", "content": _system_prompt(fact_sheet, business, df)},
         {"role": "user", "content": user_message},
     ]
-    tools = [ANALYTICS_TOOL_DEFINITION]
+    tools = [CODE_TOOL_DEFINITION]
 
     for _ in range(max_tool_rounds):
         def _chat() -> Any:
@@ -829,7 +778,7 @@ def run_grounded_analyst(
                 tools=tools,
                 tool_choice="auto",
                 temperature=0.2,
-                max_tokens=900,
+                max_tokens=2200,
             )
 
         try:
@@ -844,10 +793,8 @@ def run_grounded_analyst(
                     {
                         "role": "user",
                         "content": (
-                            "Retry: call run_business_analytics with only valid fields. "
-                            "operation must be from the tool enum. "
-                            "metric must be revenue, cost, profit, or margin_pct (or omit for describe_window / correlation_revenue_cost). "
-                            "Never invent metric names. Optional fields: omit them or use JSON null."
+                            "Retry: call run_dataframe_code with a single string field `code` only. "
+                            "Code must set RESULT and must not use import, open, exec, eval, or __."
                         ),
                     }
                 )
@@ -885,8 +832,8 @@ def run_grounded_analyst(
                     args = json.loads(tc.function.arguments or "{}")
                 except json.JSONDecodeError:
                     args = {}
-                if name == "run_business_analytics":
-                    result = analytics_tool_run(df, args)
+                if name == "run_dataframe_code":
+                    result = run_dataframe_code(df, str(args.get("code", "")))
                 else:
                     result = json.dumps({"ok": False, "reason": "unknown_tool", "name": name})
                 messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
@@ -896,11 +843,11 @@ def run_grounded_analyst(
         if text:
             return text, messages
 
-        messages.append({"role": "assistant", "content": "I need to call analytics tools to answer accurately."})
+        messages.append({"role": "assistant", "content": "I need to run dataframe code to answer accurately."})
         messages.append(
             {
                 "role": "user",
-                "content": "Please call run_business_analytics as needed, then answer using only tool results.",
+                "content": "Please call run_dataframe_code with pandas that sets RESULT, then answer from the tool JSON only.",
             }
         )
 
@@ -1139,11 +1086,18 @@ with st.sidebar:
         + "</div>",
         unsafe_allow_html=True,
     )
-    st.markdown('<div class="section-label">Data Source</div>', unsafe_allow_html=True)
-    ingest_uploaded_csv(
-        st.file_uploader("CSV file", type=["csv"], label_visibility="collapsed", key="upload_sidebar")
+    st.markdown('<div class="section-label">Data</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="sidebar-upload-shell">'
+        '<p class="sut-title">Upload CSV</p>'
+        '<p class="sut-hint">Daily rows with a <strong>date</strong> column. This is the only upload zone—keeps the main view clean.</p>'
+        "</div>",
+        unsafe_allow_html=True,
     )
-    if st.button("Use Sample Data", use_container_width=True, key="sample_sidebar"):
+    ingest_uploaded_csv(
+        st.file_uploader("Choose file", type=["csv"], label_visibility="visible", key="upload_sidebar")
+    )
+    if st.button("Try sample data", use_container_width=True, key="sample_sidebar"):
         st.session_state.df = get_sample_data()
         st.success("Sample data loaded")
     if st.session_state.df is not None:
@@ -1176,18 +1130,18 @@ with st.sidebar:
     )
 
 if st.session_state.df is None:
-    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
     st.markdown(
-        '<div class="card-surface" style="text-align:center;padding:2rem 2rem 1.5rem 2rem;max-width:520px;margin:0 auto;">'
-        '<div style="font-size:2.5rem;margin-bottom:1rem;">&#128200;</div>'
-        '<div style="font-size:1.25rem;font-weight:700;font-family:var(--font-display);color:#1c1917;margin-bottom:0.5rem;">Connect your data</div>'
-        '<div style="color:#78716c;font-size:0.9rem;line-height:1.65;margin-bottom:1rem;">'
-        "Upload a CSV below, use sample data, or use the "
-        '<strong style="color:#0d9488;">&#9776;</strong> menu in the <strong>top-left</strong> to open the sidebar.</div>'
-        "</div>",
+        '<div class="empty-connect-hero">'
+        '<div class="ech-icon">&#128200;</div>'
+        '<div class="ech-title">Connect your spreadsheet</div>'
+        '<div class="ech-body">'
+        "Upload your CSV from the <strong>sidebar</strong> on the left. "
+        "Tap <span class=\"ech-kbd\">&nbsp;&#9776;&nbsp;</span> if the sidebar is hidden. "
+        "Or load demo data below to explore the workspace."
+        "</div></div>",
         unsafe_allow_html=True,
     )
-    ingest_uploaded_csv(st.file_uploader("Choose a CSV file", type=["csv"], key="upload_main_empty"))
     if st.button("Load sample data", key="sample_main_empty", use_container_width=True, type="primary"):
         st.session_state.df = get_sample_data()
         st.rerun()
@@ -1218,18 +1172,6 @@ st.markdown(
     "</div>",
     unsafe_allow_html=True,
 )
-
-with st.expander("Upload or replace data (if the sidebar is closed)", expanded=False):
-    st.caption(
-        "Use the **menu / arrow** in the top-left to reopen the sidebar anytime. "
-        "You can also drop a new CSV here."
-    )
-    ingest_uploaded_csv(
-        st.file_uploader("CSV file", type=["csv"], label_visibility="visible", key="upload_main_overview")
-    )
-    if st.button("Reload sample dataset", key="sample_main_overview"):
-        st.session_state.df = get_sample_data()
-        st.rerun()
 
 st.markdown('<div class="section-label">Performance</div>', unsafe_allow_html=True)
 st.markdown(
@@ -1265,9 +1207,9 @@ st.markdown(
     '<div><div class="ai-section-title">AI business copilot</div></div></div>'
     '<div class="ai-section-meta">'
     + html_module.escape(GROQ_MODEL)
-    + " · answers grounded in your numbers (analytics tools)</div>"
+    + " · AI writes pandas; answers come from executed code on your CSV</div>"
     '<p style="color:#78716c;font-size:0.88rem;margin:0.75rem 0 0 0;line-height:1.55;">'
-    "Ask anything about totals, trends, comparisons, or strategy. Charts from your questions appear below the reply.</p>"
+    "Ask open-ended questions—the model generates analysis code. Chart-style questions still use the quick chart path below replies.</p>"
     "</div>",
     unsafe_allow_html=True,
 )
